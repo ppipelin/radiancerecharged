@@ -2,6 +2,8 @@ const std = @import("std");
 const types = @import("types.zig");
 
 const Square = types.Square;
+const File = types.File;
+const Rank = types.Rank;
 const Piece = types.Piece;
 const PieceType = types.PieceType;
 const Color = types.Color;
@@ -33,7 +35,7 @@ const CastleInfo = enum(u4) {
 pub const State = packed struct {
     turn: Color = Color.white,
     castle_info: CastleInfo = CastleInfo.KQkq,
-    rule50: u6 = 0,
+    rule_fifty: u6 = 0,
     repetition: i7 = 0, // Zero if no repetition, x positive if happened once x half moves ago, negative indicates repetition
     en_passant: Square = Square.none,
     last_captured_piece: PieceType = types.PieceType.none,
@@ -69,26 +71,104 @@ pub const Position = struct {
         return pos;
     }
 
-    fn remove(self: *Position, p: Piece, sq: Square) void {
+    inline fn remove(self: *Position, p: Piece, sq: Square) void {
         self.board[sq.index()] = p;
         const removeFilter: Bitboard = ~sq.sqToBB();
-        self.bb_pieces[p.indexType()] &= removeFilter;
-        self.bb_colors[@intFromBool(p.index() > 6)] &= removeFilter;
+        self.bb_pieces[p.pieceToPieceType().index()] &= removeFilter;
+        self.bb_colors[@intFromEnum(p.pieceToColor())] &= removeFilter;
+        // update zobrist
     }
 
-    fn add(self: *Position, p: Piece, sq: Square) void {
+    inline fn add(self: *Position, p: Piece, sq: Square) void {
         self.board[sq.index()] = p;
         const addFilter: Bitboard = sq.sqToBB();
-        self.bb_pieces[p.indexType()] |= addFilter;
-        self.bb_colors[@intFromBool(p.index() > 6)] |= addFilter;
+        self.bb_pieces[p.pieceToPieceType().index()] |= addFilter;
+        self.bb_colors[@intFromEnum(p.pieceToColor())] |= addFilter;
+        // update zobrist
     }
 
-    fn removeAdd(self: *Position, p: Piece, removeSq: Square, addSq: Square) void {
+    inline fn removeAdd(self: *Position, p: Piece, removeSq: Square, addSq: Square) void {
         self.board[removeSq.index()] = Piece.none;
         self.board[addSq.index()] = p;
         const removeFilter: Bitboard = removeSq.sqToBB() | addSq.sqToBB();
-        self.bb_pieces[p.indexType()] ^= removeFilter;
-        self.bb_colors[@intFromBool(p.index() > 6)] ^= removeFilter;
+        self.bb_pieces[p.pieceToPieceType().index()] ^= removeFilter;
+        self.bb_colors[@intFromEnum(p.pieceToColor())] ^= removeFilter;
+        // update zobrist
+    }
+
+    pub inline fn movePiece(self: *Position, move: types.Move, state: *State) !void {
+        // Reset data and set as previous
+        state.castleInfo = self.state.castleInfo;
+        // Increment ply counters. In particular, rule_fifty will be reset to zero later on in case of a capture or a pawn move.
+        state.rule_fifty = self.state.rule_fifty + 1;
+        state.en_passant = Square.none;
+        state.material_key = self.state.material_key;
+        state.last_captured_piece = types.PieceType.none;
+        state.previous = self.state;
+        self.state = state;
+
+        const from = move.getFrom();
+        const to = move.getTo();
+        const from_piece = self.board[from];
+        const to_piece = self.board[to];
+
+        if (from_piece == types.PieceType.none) {
+            return error.MoveNone;
+        }
+
+        // Remove last enPassant
+        if (state.previous.en_passant != types.Square.none) {
+            // self.state.material_key ^= Zobrist::enPassant[Board::column(m_board->enPassant())];
+            self.state.en_passant = types.Square.none;
+        }
+
+        switch (from_piece.pieceToPieceType().index()) {
+            // Disable castle if king/rook is moved
+            PieceType.king => {
+                if (from_piece.pieceToColor == Color.white) {
+                    if (state.previous.castle_info.index() & CastleInfo.K) {} // m_s->materialKey ^= Zobrist::castling[0];
+                    if (state.previous.castle_info.index() & CastleInfo.Q) {} //  m_s->materialKey ^= Zobrist::castling[1];
+                    state.castle_info &= ~CastleInfo.KQ;
+                } else {
+                    if (state.previous.castle_info.index() & CastleInfo.k) {} // m_s->materialKey ^= Zobrist::castling[2];
+                    if (state.previous.castle_info.index() & CastleInfo.q) {} //  m_s->materialKey ^= Zobrist::castling[3];
+                    state.castle_info &= ~CastleInfo.kq;
+                }
+            },
+            PieceType.rook => {
+                const is_white = from_piece.pieceToColor == Color.white;
+                if (move.getFrom().file() == File.fh) {} else if (move.getFrom().file() == File.fa) {}
+                if (move.getFrom().file() == File.fh) {} else if (move.getFrom().file() == File.fa) {}
+                _ = is_white;
+            },
+            PieceType.pawn => {},
+        }
+
+        if (move.isCapture()) {
+            if (to_piece == types.PieceType.none) {
+                return error.CaptureNone;
+            } else {
+                // This should be the quickest to disable castle when rook is taken
+                // blabla
+
+                state.last_captured_piece = to_piece;
+
+                // Remove captured
+                self.remove(to_piece, move.to);
+
+                // Reset rule 50 counter
+                self.state.rule_fifty = 0;
+            }
+        }
+
+        // Remove
+        // Add
+
+        self.state.turn = self.state.turn.invert();
+        // state.material_ey ^= Zobrist.side;
+
+        // If castling we move the rook as well
+        // blabla
     }
 
     pub fn debugPrint(self: Position) void {
@@ -171,7 +251,7 @@ pub const Position = struct {
         }
 
         try fen.append(' ');
-        try fen.appendSlice(try std.fmt.allocPrint(allocator, "{d}", .{self.state.rule50}));
+        try fen.appendSlice(try std.fmt.allocPrint(allocator, "{d}", .{self.state.rule_fifty}));
 
         return fen.items;
     }

@@ -173,8 +173,16 @@ pub const Piece = enum(u4) {
         return @intFromEnum(self);
     }
 
-    pub inline fn indexType(self: Piece) u3 {
-        return @intCast(@intFromEnum(self) % 7);
+    // pub inline fn indexType(self: Piece) u3 {
+    //     return @intCast(@intFromEnum(self) % 7);
+    // }
+
+    pub inline fn pieceToPieceType(self: Piece) PieceType {
+        return @enumFromInt(@intFromEnum(self) % 7);
+    }
+
+    pub inline fn pieceToColor(self: Piece) Color {
+        return @enumFromInt(@intFromBool(self.index() > 6));
     }
 };
 
@@ -198,18 +206,18 @@ pub const Move = packed struct {
     from: u6,
     to: u6,
 
-    pub inline fn get_flags(self: Move) MoveFlags {
+    pub inline fn getFlags(self: Move) MoveFlags {
         return @enumFromInt(self.flags);
     }
 
-    pub inline fn get_from(self: Move) Square {
+    pub inline fn getFrom(self: Move) Square {
         return @enumFromInt(self.from);
     }
 
-    pub inline fn get_to(self: Move) Square {
+    pub inline fn getTo(self: Move) Square {
         return @enumFromInt(self.to);
     }
-    pub inline fn is_capture(self: Move) bool {
+    pub inline fn isCapture(self: Move) bool {
         return (self.flags == 8) or (self.flags == 10) or (self.flags >= 12 and self.flags <= 15);
     }
     pub inline fn is_castle(self: Move) bool {
@@ -217,15 +225,15 @@ pub const Move = packed struct {
     }
     // bool isCastle() const { return bool((getFlags() ^ 0x2) <= 1); }
 
-    pub inline fn is_promotion(self: Move) bool {
+    pub inline fn isPromotion(self: Move) bool {
         return !(self.flags >> 3);
     }
 
-    pub inline fn equals_to(self: Move, other: Move) bool {
+    pub inline fn equalsTo(self: Move, other: Move) bool {
         return self.from == other.from and self.to == other.to;
     }
 
-    pub fn uci_print(self: Move, writer: anytype) void {
+    pub fn uciPrint(self: Move, writer: anytype) void {
         writer.print("{s}{s}", .{
             square_to_string[self.from],
             square_to_string[self.to],
