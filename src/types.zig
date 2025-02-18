@@ -202,7 +202,7 @@ pub const Color = enum(u1) {
 /// Chess move described like in https://www.chessprogramming.org/Encoding_Moves
 // Packed Struct makes it fit into a 16-bit integer.
 pub const Move = packed struct {
-    flags: u4,
+    flags: u4 = 0,
     from: u6,
     to: u6,
 

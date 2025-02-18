@@ -103,7 +103,7 @@ pub const Position = struct {
 
     pub inline fn movePiece(self: *Position, move: Move, state: *State) !void {
         // Reset data and set as previous
-        state.castleInfo = self.state.castleInfo;
+        state.castle_info = self.state.castle_info;
         // Increment ply counters. In particular, rule_fifty will be reset to zero later on in case of a capture or a pawn move.
         state.rule_fifty = self.state.rule_fifty + 1;
         state.en_passant = Square.none;
@@ -112,12 +112,12 @@ pub const Position = struct {
         state.previous = self.state;
         self.state = state;
 
-        const from = move.getFrom();
-        const to = move.getTo();
-        const from_piece = self.board[from];
-        const to_piece = self.board[to];
+        const from: Square = move.getFrom();
+        const to: Square = move.getTo();
+        const from_piece: Piece = self.board[from.index()];
+        const to_piece: Piece = self.board[to.index()];
 
-        if (from_piece == types.PieceType.none) {
+        if (from_piece == types.Piece.none) {
             return error.MoveNone;
         }
 
@@ -127,29 +127,29 @@ pub const Position = struct {
             self.state.en_passant = types.Square.none;
         }
 
-        switch (from_piece.pieceToPieceType().index()) {
+        switch (from_piece.pieceToPieceType()) {
             // Disable castle if king/rook is moved
             PieceType.king => {
-                if (from_piece.pieceToColor == Color.white) {
-                    if (self.state.previous.castle_info.index() & CastleInfo.K) {
+                if (from_piece.pieceToColor() == Color.white) {
+                    if (self.state.previous.castle_info.index() & CastleInfo.K.index() > 0) {
                         // self.state.material_key ^= ~Zobrist.caslting[0];
                     }
-                    if (self.state.previous.castle_info.index() & CastleInfo.Q) {
+                    if (self.state.previous.castle_info.index() & CastleInfo.Q.index() > 0) {
                         // self.state.material_key ^= ~Zobrist.caslting[1];
                     }
-                    self.state.castle_info &= ~CastleInfo.KQ;
+                    self.state.castle_info = @enumFromInt(self.state.castle_info.index() & ~CastleInfo.KQ.index());
                 } else {
-                    if (self.state.previous.castle_info.index() & CastleInfo.k) {
+                    if (self.state.previous.castle_info.index() & CastleInfo.k.index() > 0) {
                         // self.state.material_key ^= ~Zobrist.caslting[2];
                     }
-                    if (self.state.previous.castle_info.index() & CastleInfo.q) {
+                    if (self.state.previous.castle_info.index() & CastleInfo.q.index() > 0) {
                         // self.state.material_key ^= ~Zobrist.caslting[3];
                     }
-                    self.state.castle_info &= ~CastleInfo.kq;
+                    self.state.castle_info = @enumFromInt(self.state.castle_info.index() & ~CastleInfo.kq.index());
                 }
             },
             PieceType.rook => {
-                const is_white = from_piece.pieceToColor == Color.white;
+                const is_white = from_piece.pieceToColor() == Color.white;
                 if (move.getFrom().file() == File.fh) {
                     if (self.state.castle_info.index() & (if (is_white) CastleInfo.K else CastleInfo.k) > 0) {
                         self.state.castle_info &= ~(if (is_white) CastleInfo.K.index() else CastleInfo.k.index());
@@ -163,6 +163,7 @@ pub const Position = struct {
                 }
             },
             PieceType.pawn => {},
+            else => {},
         }
 
         if (move.isCapture()) {
@@ -201,26 +202,27 @@ pub const Position = struct {
 
         // If castling we move the rook as well
         switch (move.getFlags()) {
-            2 => {
+            types.MoveFlags.OO => {
                 var tmp: State = State{};
                 state = self.state;
                 self.movePiece(Move{ .flags = 0, .from = from + 3, .to = from + 3 - 2 }, &tmp); // CHESS 960 BUG
                 // We have moved, we need to set the turn back
                 self.state = &state;
             },
-            3 => {
+            types.MoveFlags.OOO => {
                 var tmp: State = State{};
                 state = self.state;
                 self.movePiece(Move{ .flags = 0, .from = from - 4, .to = from - 4 + 3 }, &tmp); // CHESS 960 BUG
                 // We have moved, we need to set the turn back
                 self.state = &state;
             },
+            else => {},
         }
 
         self.state.repetition = 0;
         if (self.state.rule_fifty >= 0) {
-            var s2: State = self.state.previous.previous; // BUG when loading from fen with rule_fifty
-            var i: usize = 4;
+            var s2: *State = self.state.previous.previous; // BUG when loading from fen with rule_fifty
+            var i: i7 = 4;
             while (i <= self.state.rule_fifty) : (i += 2) {
                 s2 = s2.previous.previous;
                 if (s2.material_key == self.state.material_key) {
