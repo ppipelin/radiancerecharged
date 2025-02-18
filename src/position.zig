@@ -1,14 +1,15 @@
 const std = @import("std");
 const types = @import("types.zig");
 
-const Square = types.Square;
+const Bitboard = types.Bitboard;
+const Color = types.Color;
+const Direction = types.Direction;
 const File = types.File;
-const Rank = types.Rank;
+const Move = types.Move;
 const Piece = types.Piece;
 const PieceType = types.PieceType;
-const Color = types.Color;
-const Bitboard = types.Bitboard;
-const Move = types.Move;
+const Rank = types.Rank;
+const Square = types.Square;
 
 const CastleInfo = enum(u4) {
     none,
@@ -43,14 +44,14 @@ pub const State = packed struct {
     rule_fifty: u6 = 0,
     repetition: i7 = 0, // Zero if no repetition, x positive if happened once x half moves ago, negative indicates repetition
     en_passant: Square = Square.none,
-    last_captured_piece: PieceType = types.PieceType.none,
+    last_captured_piece: PieceType = PieceType.none,
     material_key: u64 = 0,
     previous: *State = undefined,
 };
 
 pub const Position = struct {
     // Board
-    board: [types.board_size2]types.Piece = undefined,
+    board: [types.board_size2]Piece = undefined,
 
     // Bitboards
     bb_pieces: [PieceType.nb.index()]Bitboard = undefined,
@@ -70,7 +71,7 @@ pub const Position = struct {
     pub fn new(state: *State) Position {
         var pos = Position{};
 
-        @memset(pos.board[0..types.board_size2], types.Piece.none);
+        @memset(pos.board[0..types.board_size2], Piece.none);
         pos.state = state;
 
         return pos;
@@ -108,7 +109,7 @@ pub const Position = struct {
         state.rule_fifty = self.state.rule_fifty + 1;
         state.en_passant = Square.none;
         state.material_key = self.state.material_key;
-        state.last_captured_piece = types.PieceType.none;
+        state.last_captured_piece = PieceType.none;
         state.previous = self.state;
         self.state = state;
 
@@ -117,14 +118,14 @@ pub const Position = struct {
         const from_piece: Piece = self.board[from.index()];
         const to_piece: Piece = self.board[to.index()];
 
-        if (from_piece == types.Piece.none) {
+        if (from_piece == Piece.none) {
             return error.MoveNone;
         }
 
         // Remove last enPassant
-        if (state.previous.en_passant != types.Square.none) {
+        if (state.previous.en_passant != Square.none) {
             // self.state.material_key ^= Zobrist::enPassant[Board::column(m_board->enPassant())];
-            self.state.en_passant = types.Square.none;
+            self.state.en_passant = Square.none;
         }
 
         switch (from_piece.pieceToPieceType()) {
@@ -167,7 +168,7 @@ pub const Position = struct {
         }
 
         if (move.isCapture()) {
-            if (to_piece == types.PieceType.none) {
+            if (to_piece == PieceType.none) {
                 return error.CaptureNone;
             } else {
                 // This should be the quickest to disable castle when rook is taken
@@ -248,9 +249,11 @@ pub const Position = struct {
         std.debug.print("{s}", .{line});
         std.debug.print("{s}\n", .{letters});
 
-        std.debug.print("{s} to move\n", .{if (self.state.turn == types.Color.white) "White" else "Black"});
+        std.debug.print("{s} to move\n", .{if (self.state.turn == Color.white) "White" else "Black"});
 
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        var buffer: [90]u8 = undefined;
+        var alloc = std.heap.FixedBufferAllocator.init(&buffer);
+        var arena = std.heap.ArenaAllocator.init(alloc.allocator());
         defer arena.deinit();
         const allocator = arena.allocator();
 
@@ -320,14 +323,14 @@ pub const Position = struct {
 
     pub fn setFen(state: *State, fen: []const u8) Position {
         var pos: Position = Position.new(state);
-        var sq: i32 = @intCast(@intFromEnum(types.Square.a8));
-        var tokens = std.mem.tokenize(u8, fen, " ");
+        var sq: i32 = @intCast(@intFromEnum(Square.a8));
+        var tokens = std.mem.tokenizeScalar(u8, fen, ' ');
         const bd = tokens.next().?;
         for (bd) |ch| {
             if (std.ascii.isDigit(ch)) {
-                sq += @as(i32, ch - '0') * @intFromEnum(types.Direction.east);
+                sq += @as(i32, ch - '0') * @intFromEnum(Direction.east);
             } else if (ch == '/') {
-                sq += @intFromEnum(types.Direction.south) * 2;
+                sq += @intFromEnum(Direction.south) * 2;
             } else {
                 pos.add(@enumFromInt(first_index(types.PieceNotation, ch).?), @enumFromInt(sq));
                 sq += 1;
@@ -336,9 +339,9 @@ pub const Position = struct {
 
         const turn = tokens.next().?;
         if (std.mem.eql(u8, turn, "w")) {
-            pos.state.turn = types.Color.white;
+            pos.state.turn = Color.white;
         } else {
-            pos.state.turn = types.Color.black;
+            pos.state.turn = Color.black;
             // pos.hash ^= zobrist.TurnHash;
         }
 
