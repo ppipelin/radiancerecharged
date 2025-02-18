@@ -7,7 +7,7 @@ const PieceType = types.PieceType;
 const Color = types.Color;
 const Bitboard = types.Bitboard;
 
-const castle_info = enum(u4) {
+const CastleInfo = enum(u4) {
     None,
     q,
     k,
@@ -26,15 +26,15 @@ const castle_info = enum(u4) {
     KQkq,
 };
 
-pub const StateInfo = packed struct {
+pub const State = packed struct {
     turn: Color = Color.white,
-    castle_info: castle_info = 0b1111,
+    castle_info: CastleInfo = CastleInfo.KQkq,
     rule50: u6 = 0,
     repetition: i7 = 0, // Zero if no repetition, x positive if happened once x half moves ago, negative indicates repetition
-    en_passant: u8 = -1,
+    en_passant: Square = Square.none,
     last_captured_piece: PieceType = types.PieceType.none,
     material_key: u64 = 0,
-    previous: *StateInfo = undefined,
+    previous: *State = undefined,
 };
 
 pub const Position = struct {
@@ -43,10 +43,10 @@ pub const Position = struct {
 
     // Bitboards
     bb_pieces: [PieceType.nb.index()]Bitboard = undefined,
-    bb_colors: [Color.nb.index()]Bitboard = undefined,
+    bb_colors: [2]Bitboard = undefined,
 
     // Current player
-    turn: Color = Color.white,
+    // turn: Color = Color.white,
 
     // Ply since game started
     game_ply: u32 = 0,
@@ -54,33 +54,37 @@ pub const Position = struct {
     // Zobrist Hash
     zobrist: u64 = 0,
 
-    state: StateInfo = undefined,
+    state: *State = undefined,
 
-    pub fn new() Position {
+    pub fn new(state: *State) Position {
         var pos = Position{};
 
-        std.mem.set(types.Piece, pos.board[0..types.board_size2], types.Piece.no_piece);
-        pos.history[0] = StateInfo{};
+        @memset(pos.board[0..types.board_size2], types.Piece.none);
+        pos.state = state;
 
         return pos;
     }
 
-    fn remove(p: Piece, tile: Square) void {
-        const removeFilter: Bitboard = ~Bitboard.tile_to_bb(tile);
-        Position.bb_pieces[p.index()] &= removeFilter;
-        Position.bb_colors[@intFromBool(p.index() > 6)] &= removeFilter;
+    fn remove(self: *Position, p: Piece, sq: Square) void {
+        self.board[sq.index()] = p;
+        const removeFilter: Bitboard = ~sq.sqToBB();
+        self.bb_pieces[p.indexType()] &= removeFilter;
+        self.bb_colors[@intFromBool(p.index() > 6)] &= removeFilter;
     }
 
-    fn add(p: Piece, tile: Square) void {
-        const addFilter: Bitboard = Bitboard.tile_to_bb(tile);
-        Position.bb_pieces[p.index()] |= addFilter;
-        Position.bb_colors[@intFromBool(p.index() > 6)] |= addFilter;
+    fn add(self: *Position, p: Piece, sq: Square) void {
+        self.board[sq.index()] = p;
+        const addFilter: Bitboard = sq.sqToBB();
+        self.bb_pieces[p.indexType()] |= addFilter;
+        self.bb_colors[@intFromBool(p.index() > 6)] |= addFilter;
     }
 
-    fn removeAdd(p: Piece, removeTile: Square, addTile: Square) void {
-        const removeFilter: Bitboard = Bitboard.tile_to_bb(removeTile) | Bitboard.tile_to_bb(addTile);
-        Position.bb_pieces[p.index()] ^= removeFilter;
-        Position.bb_colors[@intFromBool(p.index() > 6)] ^= removeFilter;
+    fn removeAdd(self: *Position, p: Piece, removeSq: Square, addSq: Square) void {
+        self.board[removeSq.index()] = Piece.none;
+        self.board[addSq.index()] = p;
+        const removeFilter: Bitboard = removeSq.sqToBB() | addSq.sqToBB();
+        self.bb_pieces[p.indexType()] ^= removeFilter;
+        self.bb_colors[@intFromBool(p.index() > 6)] ^= removeFilter;
     }
 
     pub fn debugPrint(self: Position) void {
@@ -98,7 +102,7 @@ pub const Position = struct {
         std.debug.print("{s}", .{line});
         std.debug.print("{s}\n", .{letters});
 
-        std.debug.print("{s} to move\n", .{if (self.turn == types.Color.white) "White" else "Black"});
+        std.debug.print("{s} to move\n", .{if (self.state.turn == types.Color.white) "White" else "Black"});
         std.debug.print("fen: {s}\n", .{""});
         std.debug.print("zobrist: {}\n", .{self.zobrist});
     }
@@ -114,10 +118,9 @@ pub const Position = struct {
     }
 
     pub fn setFen(self: *Position, fen: []const u8) void {
-        self.* = Position.new();
         var sq: i32 = @intCast(@intFromEnum(types.Square.a8));
         var tokens = std.mem.tokenize(u8, fen, " ");
-        var bd = tokens.next().?;
+        const bd = tokens.next().?;
         for (bd) |ch| {
             if (std.ascii.isDigit(ch)) {
                 sq += @as(i32, ch - '0') * @intFromEnum(types.Direction.east);
@@ -129,45 +132,43 @@ pub const Position = struct {
             }
         }
 
-        var turn = tokens.next().?;
+        const turn = tokens.next().?;
         if (std.mem.eql(u8, turn, "w")) {
-            self.turn = types.Color.White;
+            self.state.turn = types.Color.white;
         } else {
-            self.turn = types.Color.Black;
+            self.state.turn = types.Color.black;
             // self.hash ^= zobrist.TurnHash;
         }
 
         // self.history[self.game_ply].entry = types.AllCastlingMask;
-        var castle = tokens.next().?;
+        const castle = tokens.next().?;
         for (castle) |ch| {
             switch (ch) {
                 'K' => {
-                    self.history[self.game_ply].entry &= ~types.WhiteOOMask;
+                    self.state.castle_info = @enumFromInt(@intFromEnum(self.state.castle_info) | @intFromEnum(CastleInfo.K));
                 },
                 'Q' => {
-                    self.history[self.game_ply].entry &= ~types.WhiteOOOMask;
+                    self.state.castle_info = @enumFromInt(@intFromEnum(self.state.castle_info) | @intFromEnum(CastleInfo.Q));
                 },
                 'k' => {
-                    self.history[self.game_ply].entry &= ~types.BlackOOMask;
+                    self.state.castle_info = @enumFromInt(@intFromEnum(self.state.castle_info) | @intFromEnum(CastleInfo.k));
                 },
                 'q' => {
-                    self.history[self.game_ply].entry &= ~types.BlackOOOMask;
+                    self.state.castle_info = @enumFromInt(@intFromEnum(self.state.castle_info) | @intFromEnum(CastleInfo.q));
                 },
                 else => {},
             }
         }
 
-        var ep = tokens.next().?;
+        const ep = tokens.next().?;
         if (ep.len == 2) {
             for (types.square_to_string, 0..) |sq_str, i| {
                 if (std.mem.eql(u8, ep, sq_str)) {
-                    self.history[self.game_ply].ep_sq = @enumFromInt(types.Square, i);
+                    self.state.en_passant = @enumFromInt(i);
                     // self.hash ^= zobrist.EnPassantHash[types.file_plain(i)];
                     break;
                 }
             }
         }
-
-        self.evaluator.full_refresh(self);
     }
 };

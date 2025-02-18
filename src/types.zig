@@ -31,7 +31,7 @@ pub const Square = enum(u8) {
     a6, b6, c6, d6, e6, f6, g6, h6,
     a7, b7, c7, d7, e7, f7, g7, h7,
     a8, b8, c8, d8, e8, f8, g8, h8,
-    no_square,
+    none,
     // zig fmt: on
 
     pub inline fn inc(self: *Square) *Square {
@@ -59,7 +59,7 @@ pub const Square = enum(u8) {
         return 7 + @intFromEnum(self.rank()) - @intFromEnum(self.file());
     }
 
-    pub inline fn anti_diagonal(self: Square) i32 {
+    pub inline fn antiDiagonal(self: Square) i32 {
         return @intFromEnum(self.rank()) + @intFromEnum(self.file());
     }
 
@@ -70,26 +70,36 @@ pub const Square = enum(u8) {
     pub inline fn index(self: Square) u8 {
         return @intFromEnum(self);
     }
+
+    pub inline fn sqToBB(self: Square) Bitboard {
+        const sq: u6 = @truncate(@intFromEnum(self));
+        return @shlExact(@as(Bitboard, 1), sq);
+    }
 };
 
 pub const Direction = enum(i32) {
     north = 8,
+    south = -8,
+    // south = -@intFromEnum(Direction.north),
     east = 1,
-    south = -Direction.north,
-    west = -Direction.east,
+    west = -1,
+    // west = -@intFromEnum(Direction.east),
 
-    northeast = Direction.north + Direction.east,
-    southeast = Direction.south + Direction.east,
-    southwest = Direction.south + Direction.west,
-    northwest = Direction.north + Direction.west,
+    north_east = 9,
+    south_east = -7,
+    north_west = 7,
+    south_west = -9,
+
+    // north_east = @intFromEnum(Direction.north) + @intFromEnum(Direction.east),
+    // south_east = @intFromEnum(Direction.south) + @intFromEnum(Direction.east),
+    // north_west = @intFromEnum(Direction.north) + @intFromEnum(Direction.west),
+    // south_west = @intFromEnum(Direction.south) + @intFromEnum(Direction.west),
 
     // double push
-    north_north = Direction.north * 2,
-    south_south = Direction.south * 2,
-
-    // pub inline fn relative_dir(self: Direction, comptime c: Color) Direction {
-    //     return if (c == Color.White) self else @enumFromInt(-@intFromEnum(self));
-    // }
+    north_north = 16,
+    south_south = -16,
+    // north_north = @intFromEnum(Direction.north) * 2,
+    // south_south = @intFromEnum(Direction.south) * 2,
 };
 
 pub const File = enum(u8) {
@@ -126,7 +136,7 @@ pub const Rank = enum(u8) {
     // }
 };
 
-pub const PieceType = enum(u8) {
+pub const PieceType = enum(u3) {
     none,
     pawn,
     knight,
@@ -136,14 +146,14 @@ pub const PieceType = enum(u8) {
     king,
     nb,
 
-    pub inline fn index(self: PieceType) u8 {
+    pub inline fn index(self: PieceType) u3 {
         return @intFromEnum(self);
     }
 };
 
 pub const PieceNotation: []const u8 = " PNBRQKpnbrqk";
 
-pub const Piece = enum(u8) {
+pub const Piece = enum(u4) {
     none,
     w_pawn,
     w_knight,
@@ -157,19 +167,22 @@ pub const Piece = enum(u8) {
     b_rook,
     b_queen,
     b_king,
-    piece_nb = 16,
+    // nb = 16,
 
     pub inline fn index(self: Piece) u8 {
         return @intFromEnum(self);
     }
+
+    pub inline fn indexType(self: Piece) u3 {
+        return @intCast(@intFromEnum(self) % 7);
+    }
 };
 
-pub const Color = enum(u8) {
+pub const Color = enum(u1) {
     black,
     white,
-    nb,
 
-    pub inline fn index(self: Color) u8 {
+    pub inline fn index(self: Color) u1 {
         return @intFromEnum(self);
     }
 

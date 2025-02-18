@@ -3,7 +3,10 @@ const types = @import("types.zig");
 const position = @import("position.zig");
 
 pub fn main() !void {
-    const pos = position.Position{};
+    var state: position.State = position.State{};
+    var pos = position.Position.new(&state);
+    pos.debugPrint();
+    pos.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     pos.debugPrint();
     // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
