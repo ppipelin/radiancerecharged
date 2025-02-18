@@ -103,7 +103,16 @@ pub const Position = struct {
         std.debug.print("{s}\n", .{letters});
 
         std.debug.print("{s} to move\n", .{if (self.state.turn == types.Color.white) "White" else "Black"});
-        std.debug.print("fen: {s}\n", .{""});
+
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+
+        if (self.getFen(allocator)) |fen| {
+            std.debug.print("fen: {s}\n", .{fen});
+        } else |_| {
+            std.debug.print("err reading fen\n", .{});
+        }
         std.debug.print("zobrist: {}\n", .{self.zobrist});
     }
 
@@ -117,7 +126,32 @@ pub const Position = struct {
         return null;
     }
 
-    pub fn setFen(self: *Position, fen: []const u8) void {
+    pub fn getFen(self: *const Position, allocator: std.mem.Allocator) ![]const u8 {
+        var fen = std.ArrayList(u8).init(allocator);
+        var i: i32 = 56;
+        while (i >= 0) : (i -= 8) {
+            var blank_counter: u8 = 0;
+            var j: i32 = 0;
+            while (j < 8) : (j += 1) {
+                const idx = self.board[@intCast(i + j)].index();
+                if (idx == 0) {
+                    blank_counter += 1;
+                } else {
+                    try fen.append(types.PieceNotation[idx]);
+                }
+            }
+            if (blank_counter != 0) {
+                try fen.append('0' + blank_counter);
+            }
+            if (i - 8 >= 0) {
+                try fen.append('/');
+            }
+        }
+        return fen.items;
+    }
+
+    pub fn setFen(state: *State, fen: []const u8) Position {
+        var pos: Position = Position.new(state);
         var sq: i32 = @intCast(@intFromEnum(types.Square.a8));
         var tokens = std.mem.tokenize(u8, fen, " ");
         const bd = tokens.next().?;
@@ -127,34 +161,34 @@ pub const Position = struct {
             } else if (ch == '/') {
                 sq += @intFromEnum(types.Direction.south) * 2;
             } else {
-                self.add(@enumFromInt(first_index(types.PieceNotation, ch).?), @enumFromInt(sq));
+                pos.add(@enumFromInt(first_index(types.PieceNotation, ch).?), @enumFromInt(sq));
                 sq += 1;
             }
         }
 
         const turn = tokens.next().?;
         if (std.mem.eql(u8, turn, "w")) {
-            self.state.turn = types.Color.white;
+            pos.state.turn = types.Color.white;
         } else {
-            self.state.turn = types.Color.black;
-            // self.hash ^= zobrist.TurnHash;
+            pos.state.turn = types.Color.black;
+            // pos.hash ^= zobrist.TurnHash;
         }
 
-        // self.history[self.game_ply].entry = types.AllCastlingMask;
+        // pos.history[pos.game_ply].entry = types.AllCastlingMask;
         const castle = tokens.next().?;
         for (castle) |ch| {
             switch (ch) {
                 'K' => {
-                    self.state.castle_info = @enumFromInt(@intFromEnum(self.state.castle_info) | @intFromEnum(CastleInfo.K));
+                    pos.state.castle_info = @enumFromInt(@intFromEnum(pos.state.castle_info) | @intFromEnum(CastleInfo.K));
                 },
                 'Q' => {
-                    self.state.castle_info = @enumFromInt(@intFromEnum(self.state.castle_info) | @intFromEnum(CastleInfo.Q));
+                    pos.state.castle_info = @enumFromInt(@intFromEnum(pos.state.castle_info) | @intFromEnum(CastleInfo.Q));
                 },
                 'k' => {
-                    self.state.castle_info = @enumFromInt(@intFromEnum(self.state.castle_info) | @intFromEnum(CastleInfo.k));
+                    pos.state.castle_info = @enumFromInt(@intFromEnum(pos.state.castle_info) | @intFromEnum(CastleInfo.k));
                 },
                 'q' => {
-                    self.state.castle_info = @enumFromInt(@intFromEnum(self.state.castle_info) | @intFromEnum(CastleInfo.q));
+                    pos.state.castle_info = @enumFromInt(@intFromEnum(pos.state.castle_info) | @intFromEnum(CastleInfo.q));
                 },
                 else => {},
             }
@@ -164,11 +198,12 @@ pub const Position = struct {
         if (ep.len == 2) {
             for (types.square_to_string, 0..) |sq_str, i| {
                 if (std.mem.eql(u8, ep, sq_str)) {
-                    self.state.en_passant = @enumFromInt(i);
+                    pos.state.en_passant = @enumFromInt(i);
                     // self.hash ^= zobrist.EnPassantHash[types.file_plain(i)];
                     break;
                 }
             }
         }
+        return pos;
     }
 };
