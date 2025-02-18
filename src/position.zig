@@ -24,6 +24,10 @@ const CastleInfo = enum(u4) {
     KQq,
     KQk,
     KQkq,
+
+    pub inline fn index(self: CastleInfo) u4 {
+        return @intFromEnum(self);
+    }
 };
 
 pub const State = packed struct {
@@ -147,6 +151,28 @@ pub const Position = struct {
                 try fen.append('/');
             }
         }
+        try fen.append(' ');
+        try fen.append(if (self.state.turn == Color.white) 'w' else 'b');
+        try fen.append(' ');
+        if ((self.state.castle_info.index() | CastleInfo.K.index()) > 0)
+            try fen.append('K');
+        if ((self.state.castle_info.index() | CastleInfo.Q.index()) > 0)
+            try fen.append('Q');
+        if ((self.state.castle_info.index() | CastleInfo.k.index()) > 0)
+            try fen.append('k');
+        if ((self.state.castle_info.index() | CastleInfo.q.index()) > 0)
+            try fen.append('q');
+
+        try fen.append(' ');
+        if (self.state.en_passant == Square.none) {
+            try fen.append('-');
+        } else {
+            try fen.appendSlice(types.square_to_string[self.state.en_passant.index()]);
+        }
+
+        try fen.append(' ');
+        try fen.appendSlice(try std.fmt.allocPrint(allocator, "{d}", .{self.state.rule50}));
+
         return fen.items;
     }
 
