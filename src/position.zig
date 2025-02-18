@@ -10,7 +10,7 @@ const Color = types.Color;
 const Bitboard = types.Bitboard;
 
 const CastleInfo = enum(u4) {
-    None,
+    none,
     q,
     k,
     kq,
@@ -126,13 +126,13 @@ pub const Position = struct {
             // Disable castle if king/rook is moved
             PieceType.king => {
                 if (from_piece.pieceToColor == Color.white) {
-                    if (state.previous.castle_info.index() & CastleInfo.K) {} // m_s->materialKey ^= Zobrist::castling[0];
-                    if (state.previous.castle_info.index() & CastleInfo.Q) {} //  m_s->materialKey ^= Zobrist::castling[1];
-                    state.castle_info &= ~CastleInfo.KQ;
+                    if (self.state.previous.castle_info.index() & CastleInfo.K) {} // self.state.material_key ^= Zobrist::castling[0];
+                    if (self.state.previous.castle_info.index() & CastleInfo.Q) {} // self.state.material_key ^= Zobrist::castling[1];
+                    self.state.castle_info &= ~CastleInfo.KQ;
                 } else {
-                    if (state.previous.castle_info.index() & CastleInfo.k) {} // m_s->materialKey ^= Zobrist::castling[2];
-                    if (state.previous.castle_info.index() & CastleInfo.q) {} //  m_s->materialKey ^= Zobrist::castling[3];
-                    state.castle_info &= ~CastleInfo.kq;
+                    if (self.state.previous.castle_info.index() & CastleInfo.k) {} // self.state.material_key ^= Zobrist::castling[2];
+                    if (self.state.previous.castle_info.index() & CastleInfo.q) {} // self.state.material_key ^= Zobrist::castling[3];
+                    self.state.castle_info &= ~CastleInfo.kq;
                 }
             },
             PieceType.rook => {
@@ -149,9 +149,20 @@ pub const Position = struct {
                 return error.CaptureNone;
             } else {
                 // This should be the quickest to disable castle when rook is taken
-                // blabla
+                const castleRemove: CastleInfo = switch (to) {
+                    0 => CastleInfo.K,
+                    types.board_size - 1 => CastleInfo.Q,
+                    types.board_size2 - types.board_size => CastleInfo.k,
+                    types.board_size2 - 1 => CastleInfo.q,
+                    else => CastleInfo.none,
+                };
 
-                state.last_captured_piece = to_piece;
+                if (CastleInfo.none != CastleInfo.none and self.state.castle_info.index() | castleRemove.index()) {
+                    self.state.castle_info &= ~castleRemove;
+                    // self.state.material_key ^= ~Zobrist.caslting[castleRemove.index()];
+                }
+
+                self.state.last_captured_piece = to_piece;
 
                 // Remove captured
                 self.remove(to_piece, move.to);
