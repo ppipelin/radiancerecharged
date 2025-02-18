@@ -8,6 +8,7 @@ const Piece = types.Piece;
 const PieceType = types.PieceType;
 const Color = types.Color;
 const Bitboard = types.Bitboard;
+const Move = types.Move;
 
 const CastleInfo = enum(u4) {
     none,
@@ -29,6 +30,10 @@ const CastleInfo = enum(u4) {
 
     pub inline fn index(self: CastleInfo) u4 {
         return @intFromEnum(self);
+    }
+
+    pub inline fn indexLsb(self: CastleInfo) u4 {
+        return types.lsb(@intFromEnum(self));
     }
 };
 
@@ -96,7 +101,7 @@ pub const Position = struct {
         // update zobrist
     }
 
-    pub inline fn movePiece(self: *Position, move: types.Move, state: *State) !void {
+    pub inline fn movePiece(self: *Position, move: Move, state: *State) !void {
         // Reset data and set as previous
         state.castleInfo = self.state.castleInfo;
         // Increment ply counters. In particular, rule_fifty will be reset to zero later on in case of a capture or a pawn move.
@@ -126,20 +131,36 @@ pub const Position = struct {
             // Disable castle if king/rook is moved
             PieceType.king => {
                 if (from_piece.pieceToColor == Color.white) {
-                    if (self.state.previous.castle_info.index() & CastleInfo.K) {} // self.state.material_key ^= Zobrist::castling[0];
-                    if (self.state.previous.castle_info.index() & CastleInfo.Q) {} // self.state.material_key ^= Zobrist::castling[1];
+                    if (self.state.previous.castle_info.index() & CastleInfo.K) {
+                        // self.state.material_key ^= ~Zobrist.caslting[0];
+                    }
+                    if (self.state.previous.castle_info.index() & CastleInfo.Q) {
+                        // self.state.material_key ^= ~Zobrist.caslting[1];
+                    }
                     self.state.castle_info &= ~CastleInfo.KQ;
                 } else {
-                    if (self.state.previous.castle_info.index() & CastleInfo.k) {} // self.state.material_key ^= Zobrist::castling[2];
-                    if (self.state.previous.castle_info.index() & CastleInfo.q) {} // self.state.material_key ^= Zobrist::castling[3];
+                    if (self.state.previous.castle_info.index() & CastleInfo.k) {
+                        // self.state.material_key ^= ~Zobrist.caslting[2];
+                    }
+                    if (self.state.previous.castle_info.index() & CastleInfo.q) {
+                        // self.state.material_key ^= ~Zobrist.caslting[3];
+                    }
                     self.state.castle_info &= ~CastleInfo.kq;
                 }
             },
             PieceType.rook => {
                 const is_white = from_piece.pieceToColor == Color.white;
-                if (move.getFrom().file() == File.fh) {} else if (move.getFrom().file() == File.fa) {}
-                if (move.getFrom().file() == File.fh) {} else if (move.getFrom().file() == File.fa) {}
-                _ = is_white;
+                if (move.getFrom().file() == File.fh) {
+                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.K else CastleInfo.k) > 0) {
+                        self.state.castle_info &= ~(if (is_white) CastleInfo.K.index() else CastleInfo.k.index());
+                        // self.state.material_key ^= ~Zobrist.caslting[if (is_white) CastleInfo.K else CastleInfo.k) > 0];
+                    }
+                } else if (move.getFrom().file() == File.fa) {
+                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.Q else CastleInfo.q) > 0) {
+                        self.state.castle_info &= ~(if (is_white) CastleInfo.Q.index() else CastleInfo.q.index());
+                        // self.state.material_key ^= ~Zobrist.caslting[if (is_white) CastleInfo.Q else CastleInfo.q) > 0];
+                    }
+                }
             },
             PieceType.pawn => {},
         }
@@ -157,9 +178,9 @@ pub const Position = struct {
                     else => CastleInfo.none,
                 };
 
-                if (CastleInfo.none != CastleInfo.none and self.state.castle_info.index() | castleRemove.index()) {
+                if (CastleInfo.none != CastleInfo.none and (self.state.castle_info.index() | castleRemove.index())) {
                     self.state.castle_info &= ~castleRemove;
-                    // self.state.material_key ^= ~Zobrist.caslting[castleRemove.index()];
+                    // self.state.material_key ^= ~Zobrist.caslting[castleRemove.indexLsb()];
                 }
 
                 self.state.last_captured_piece = to_piece;
@@ -172,14 +193,42 @@ pub const Position = struct {
             }
         }
 
-        // Remove
         // Add
+        self.removeAdd(from_piece, from, to);
 
         self.state.turn = self.state.turn.invert();
-        // state.material_ey ^= Zobrist.side;
+        // self.state.material_key ^= Zobrist.side;
 
         // If castling we move the rook as well
-        // blabla
+        switch (move.getFlags()) {
+            2 => {
+                var tmp: State = State{};
+                state = self.state;
+                self.movePiece(Move{ .flags = 0, .from = from + 3, .to = from + 3 - 2 }, &tmp); // CHESS 960 BUG
+                // We have moved, we need to set the turn back
+                self.state = &state;
+            },
+            3 => {
+                var tmp: State = State{};
+                state = self.state;
+                self.movePiece(Move{ .flags = 0, .from = from - 4, .to = from - 4 + 3 }, &tmp); // CHESS 960 BUG
+                // We have moved, we need to set the turn back
+                self.state = &state;
+            },
+        }
+
+        self.state.repetition = 0;
+        if (self.state.rule_fifty >= 0) {
+            var s2: State = self.state.previous.previous; // BUG when loading from fen with rule_fifty
+            var i: usize = 4;
+            while (i <= self.state.rule_fifty) : (i += 2) {
+                s2 = s2.previous.previous;
+                if (s2.material_key == self.state.material_key) {
+                    self.state.repetition = if (s2.repetition != 0) -i else i;
+                    break;
+                }
+            }
+        }
     }
 
     pub fn debugPrint(self: Position) void {
