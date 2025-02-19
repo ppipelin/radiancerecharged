@@ -8,8 +8,15 @@ pub fn main() !void {
     pos.debugPrint();
 
     var s: position.State = position.State{};
-    pos.movePiece(types.Move{ .from = 12, .to = 28 }, &s) catch unreachable;
+    const move: types.Move = types.Move{ .from = 12, .to = 28 };
+    pos.movePiece(move, &s) catch unreachable;
     pos.debugPrint();
+    types.debugPrintBitboard(pos.bb_pieces[types.PieceType.pawn.index()]);
+
+    pos.unMovePiece(move, false) catch unreachable;
+    pos.debugPrint();
+
+    types.debugPrintBitboard(pos.bb_pieces[types.PieceType.pawn.index()]);
 
     // pos = position.Position.setFen(&state, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
     // pos.debugPrint();

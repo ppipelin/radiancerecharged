@@ -44,7 +44,7 @@ pub const State = packed struct {
     rule_fifty: u6 = 0,
     repetition: i7 = 0, // Zero if no repetition, x positive if happened once x half moves ago, negative indicates repetition
     en_passant: Square = Square.none,
-    last_captured_piece: PieceType = PieceType.none,
+    last_captured_piece: Piece = Piece.none,
     material_key: u64 = 0,
     previous: *State = undefined,
 };
@@ -109,7 +109,7 @@ pub const Position = struct {
         state.rule_fifty = self.state.rule_fifty + 1;
         state.en_passant = Square.none;
         state.material_key = self.state.material_key;
-        state.last_captured_piece = PieceType.none;
+        state.last_captured_piece = Piece.none;
         state.previous = self.state;
         self.state = state;
 
@@ -231,6 +231,46 @@ pub const Position = struct {
                     break;
                 }
             }
+        }
+    }
+
+    /// silent will not change self.state
+    pub inline fn unMovePiece(self: *Position, move: Move, silent: bool) !void {
+        const from: Square = move.getFrom();
+        const to: Square = move.getTo();
+        const to_piece: Piece = self.board[to.index()];
+
+        // Remove/Add
+        self.removeAdd(to_piece, to, from);
+
+        if (!silent) {
+            // Was a promotion
+            if (move.isPromotion()) {
+                // Before delete we store the data we need
+                const is_white: Color = to_piece.pieceToColor();
+                // Remove promoted piece back into pawn (already moved back)
+                self.remove(to_piece, from);
+                self.add(if (is_white) Piece.w_pawn else Piece.b_pawn, from);
+                to_piece = self.board[from]; // update, may not be needed if we don't need later
+            }
+
+            if (self.state.last_captured_piece != Piece.none) {
+                const local_to: Square = to;
+                // Case where capture was en passant
+                if (move.isEnPassant())
+                    local_to = if (self.state.last_captured_piece.pieceToColor() == Color.white) to + 8 else to - 8;
+
+                self.add(self.state.last_captured_piece, local_to);
+            }
+
+            self.state = self.state.previous;
+        }
+
+        // If castling we move the rook as well
+        if (move.getFlags() == types.MoveFlags.OO) {
+            unMovePiece(Move{ .from = from + 3, .to = from + 3 - 2 }, true);
+        } else if (move.getFlags() == types.MoveFlags.OO) {
+            unMovePiece(Move{ .from = from - 4, .to = from - 4 + 3 }, true);
         }
     }
 

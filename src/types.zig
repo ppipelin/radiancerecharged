@@ -173,12 +173,8 @@ pub const Piece = enum(u4) {
         return @intFromEnum(self);
     }
 
-    // pub inline fn indexType(self: Piece) u3 {
-    //     return @intCast(@intFromEnum(self) % 7);
-    // }
-
     pub inline fn pieceToPieceType(self: Piece) PieceType {
-        return @enumFromInt(@intFromEnum(self) % 7);
+        return @enumFromInt(@intFromEnum(self) % 6);
     }
 
     pub inline fn pieceToColor(self: Piece) Color {
@@ -217,16 +213,21 @@ pub const Move = packed struct {
     pub inline fn getTo(self: Move) Square {
         return @enumFromInt(self.to);
     }
+
+    pub inline fn isCastle(self: Move) bool {
+        return self.flags ^ 0x2 <= 1;
+    }
+
     pub inline fn isCapture(self: Move) bool {
         return (self.flags == 8) or (self.flags == 10) or (self.flags >= 12 and self.flags <= 15);
     }
-    pub inline fn is_castle(self: Move) bool {
-        return self.flags ^ 0x2 <= 1;
+
+    pub inline fn isEnPassant(self: Move) bool {
+        return self.flags == 5;
     }
-    // bool isCastle() const { return bool((getFlags() ^ 0x2) <= 1); }
 
     pub inline fn isPromotion(self: Move) bool {
-        return !(self.flags >> 3);
+        return (self.flags >> 3) > 0;
     }
 
     pub inline fn equalsTo(self: Move, other: Move) bool {
@@ -327,7 +328,7 @@ pub const mask_anti_diagonal = [_]Bitboard{
 };
 
 // zig fmt: off
-pub const SquareIndexBB = [_]Bitboard{
+pub const square_index_bb = [_]Bitboard{
     0x1, 0x2, 0x4, 0x8,
     0x10, 0x20, 0x40, 0x80,
     0x100, 0x200, 0x400, 0x800,
@@ -348,7 +349,7 @@ pub const SquareIndexBB = [_]Bitboard{
 };
 // zig fmt: on
 
-pub fn debug_print_bitboard(b: Bitboard) void {
+pub fn debugPrintBitboard(b: Bitboard) void {
     var i: i32 = 56;
     while (i >= 0) : (i -= 8) {
         var j: i32 = 0;
@@ -368,7 +369,7 @@ pub inline fn popcount(x: Bitboard) i32 {
     return @intCast(@popCount(x));
 }
 
-pub inline fn popcount_usize(x: Bitboard) usize {
+pub inline fn popcountUsize(x: Bitboard) usize {
     return @intCast(@popCount(x));
 }
 
@@ -376,12 +377,8 @@ pub inline fn lsb(x: Bitboard) i32 {
     return @intCast(@ctz(x));
 }
 
-pub inline fn pop_lsb(x: *Bitboard) Square {
+pub inline fn popLsb(x: *Bitboard) Square {
     const l = lsb(x.*);
     x.* &= x.* - 1;
     return @enumFromInt(l);
-}
-
-pub inline fn square_to_bb(sq: Square) Bitboard {
-    return (0b1 << sq);
 }
