@@ -41,8 +41,9 @@ const CastleInfo = enum(u4) {
 pub const State = packed struct {
     turn: Color = Color.white,
     castle_info: CastleInfo = CastleInfo.KQkq,
-    rule_fifty: u6 = 0,
     repetition: i7 = 0, // Zero if no repetition, x positive if happened once x half moves ago, negative indicates repetition
+    rule_fifty: u6 = 0,
+    game_ply: u32 = 0,
     en_passant: Square = Square.none,
     last_captured_piece: Piece = Piece.none,
     material_key: u64 = 0,
@@ -56,12 +57,6 @@ pub const Position = struct {
     // Bitboards
     bb_pieces: [PieceType.nb.index()]Bitboard = undefined,
     bb_colors: [2]Bitboard = undefined,
-
-    // Current player
-    // turn: Color = Color.white,
-
-    // Ply since game started
-    game_ply: u32 = 0,
 
     // Zobrist Hash
     zobrist: u64 = 0,
@@ -77,15 +72,17 @@ pub const Position = struct {
         return pos;
     }
 
-    inline fn remove(self: *Position, p: Piece, sq: Square) void {
-        self.board[sq.index()] = p;
+    /// Remove from board and bitboards
+    pub inline fn remove(self: *Position, p: Piece, sq: Square) void {
+        self.board[sq.index()] = types.Piece.none;
         const removeFilter: Bitboard = ~sq.sqToBB();
         self.bb_pieces[p.pieceToPieceType().index()] &= removeFilter;
         self.bb_colors[@intFromEnum(p.pieceToColor())] &= removeFilter;
         // update zobrist
     }
 
-    inline fn add(self: *Position, p: Piece, sq: Square) void {
+    /// Add to board and bitboards
+    pub inline fn add(self: *Position, p: Piece, sq: Square) void {
         self.board[sq.index()] = p;
         const addFilter: Bitboard = sq.sqToBB();
         self.bb_pieces[p.pieceToPieceType().index()] |= addFilter;
@@ -107,9 +104,10 @@ pub const Position = struct {
         state.castle_info = self.state.castle_info;
         // Increment ply counters. In particular, rule_fifty will be reset to zero later on in case of a capture or a pawn move.
         state.rule_fifty = self.state.rule_fifty + 1;
+        state.game_ply = self.state.game_ply + 1;
         state.en_passant = Square.none;
-        state.material_key = self.state.material_key;
         state.last_captured_piece = Piece.none;
+        state.material_key = self.state.material_key;
         state.previous = self.state;
         self.state = state;
 
@@ -123,9 +121,8 @@ pub const Position = struct {
         }
 
         // Remove last enPassant
-        if (state.previous.en_passant != Square.none) {
+        if (self.state.previous.en_passant != Square.none) {
             // self.state.material_key ^= Zobrist::enPassant[Board::column(m_board->enPassant())];
-            self.state.en_passant = Square.none;
         }
 
         switch (from_piece.pieceToPieceType()) {
@@ -163,7 +160,27 @@ pub const Position = struct {
                     }
                 }
             },
-            PieceType.pawn => {},
+            PieceType.pawn => {
+                // Updates enPassant if possible next turn
+                switch (move.getFlags()) {
+                    types.MoveFlags.double_push => {
+                        self.state.en_passant = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
+                    },
+                    types.MoveFlags.en_passant => {
+                        const en_passant_sq = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
+                        self.state.last_captured_piece = self.board[en_passant_sq];
+
+                        // Remove
+                        self.remove(self.state.last_captured_piece, en_passant_sq);
+                        // self.state.material_key ^= Zobrist.psq[self.state.last_captured_piece.pieceToPieceType()][en_passant_sq];
+
+                        self.board[en_passant_sq] = Piece.none;
+                    },
+                    else => {},
+                }
+                // Reset rule 50 counter
+                self.state.rule_fifty = 0;
+            },
             else => {},
         }
 
@@ -198,19 +215,20 @@ pub const Position = struct {
         // Add
         self.removeAdd(from_piece, from, to);
 
+        self.state.game_ply += 1;
         self.state.turn = self.state.turn.invert();
         // self.state.material_key ^= Zobrist.side;
 
         // If castling we move the rook as well
         switch (move.getFlags()) {
-            types.MoveFlags.OO => {
+            types.MoveFlags.oo => {
                 var tmp: State = State{};
                 state = self.state;
                 self.movePiece(Move{ .flags = 0, .from = from + 3, .to = from + 3 - 2 }, &tmp); // CHESS 960 BUG
                 // We have moved, we need to set the turn back
                 self.state = &state;
             },
-            types.MoveFlags.OOO => {
+            types.MoveFlags.ooo => {
                 var tmp: State = State{};
                 state = self.state;
                 self.movePiece(Move{ .flags = 0, .from = from - 4, .to = from - 4 + 3 }, &tmp); // CHESS 960 BUG
@@ -267,9 +285,9 @@ pub const Position = struct {
         }
 
         // If castling we move the rook as well
-        if (move.getFlags() == types.MoveFlags.OO) {
+        if (move.getFlags() == types.MoveFlags.oo) {
             unMovePiece(Move{ .from = from + 3, .to = from + 3 - 2 }, true);
-        } else if (move.getFlags() == types.MoveFlags.OO) {
+        } else if (move.getFlags() == types.MoveFlags.ooo) {
             unMovePiece(Move{ .from = from - 4, .to = from - 4 + 3 }, true);
         }
     }
@@ -318,15 +336,19 @@ pub const Position = struct {
 
     pub fn getFen(self: *const Position, allocator: std.mem.Allocator) ![]const u8 {
         var fen = std.ArrayList(u8).init(allocator);
-        var i: i32 = 56;
+        var i: i8 = Square.a8.index();
         while (i >= 0) : (i -= 8) {
             var blank_counter: u8 = 0;
-            var j: i32 = 0;
+            var j: i8 = 0;
             while (j < 8) : (j += 1) {
                 const idx = self.board[@intCast(i + j)].index();
                 if (idx == 0) {
                     blank_counter += 1;
                 } else {
+                    if (blank_counter != 0) {
+                        try fen.append('0' + blank_counter);
+                        blank_counter = 0;
+                    }
                     try fen.append(types.PieceNotation[idx]);
                 }
             }

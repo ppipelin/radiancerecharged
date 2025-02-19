@@ -1,6 +1,6 @@
+const position = @import("position.zig");
 const std = @import("std");
 const types = @import("types.zig");
-const position = @import("position.zig");
 
 pub fn main() !void {
     var state: position.State = position.State{};

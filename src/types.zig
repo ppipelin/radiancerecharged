@@ -78,8 +78,8 @@ pub const Square = enum(u8) {
 };
 
 pub const Direction = enum(i32) {
-    north = 8,
-    south = -8,
+    north = board_size,
+    south = -board_size,
     // south = -@intFromEnum(Direction.north),
     east = 1,
     west = -1,
@@ -250,29 +250,33 @@ pub const Move = packed struct {
 pub const prom_move_type_string = [_][]const u8{ "", "", "", " ", "", "", "", "", "n", "b", "r", "q", "n", "b", "r", "q" };
 
 pub const MoveFlags = enum(u4) {
-    QUIET = 0b0000,
-    DOUBLE_PUSH = 0b0001,
-    OO = 0b0010,
-    OOO = 0b0011,
-    CAPTURE = 0b0100,
-    EN_PASSANT = 0b0101,
-    PR_KNIGHT = 0b1000,
-    PR_BISHOP = 0b1001,
-    PR_ROOK = 0b1010,
-    PR_QUEEN = 0b1011,
-    PRC_KNIGHT = 0b1100,
-    PRC_BISHOP = 0b1101,
-    PRC_ROOK = 0b1110,
-    PRC_QUEEN = 0b1111,
+    quiet = 0b0000,
+    double_push = 0b0001,
+    oo = 0b0010,
+    ooo = 0b0011,
+    capture = 0b0100,
+    en_passant = 0b0101,
+    pr_knight = 0b1000,
+    pr_bishop = 0b1001,
+    pr_rook = 0b1010,
+    pr_queen = 0b1011,
+    prc_knight = 0b1100,
+    prc_bishop = 0b1101,
+    prc_rook = 0b1110,
+    prc_queen = 0b1111,
 
     pub inline fn promote_type(self: MoveFlags) PieceType {
         return switch (@intFromEnum(self) & @intFromEnum(0b1000)) {
-            MoveFlags.PR_KNIGHT => PieceType.Knight,
-            MoveFlags.PR_BISHOP => PieceType.Bishop,
-            MoveFlags.PR_ROOK => PieceType.Rook,
-            MoveFlags.PR_QUEEN => PieceType.Queen,
+            MoveFlags.pr_knight => PieceType.Knight,
+            MoveFlags.pr_bishop => PieceType.Bishop,
+            MoveFlags.pr_rook => PieceType.Rook,
+            MoveFlags.pr_queen => PieceType.Queen,
             else => unreachable,
         };
+    }
+
+    pub inline fn index(self: MoveFlags) u4 {
+        return @intFromEnum(self);
     }
 };
 
