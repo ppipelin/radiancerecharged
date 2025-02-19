@@ -251,7 +251,8 @@ pub const Position = struct {
 
         std.debug.print("{s} to move\n", .{if (self.state.turn == Color.white) "White" else "Black"});
 
-        var buffer: [90]u8 = undefined;
+        // Size of buffer could be 90 but std.fmt.allocPrint and ArenaAllocator requires more
+        var buffer: [200]u8 = undefined;
         var alloc = std.heap.FixedBufferAllocator.init(&buffer);
         var arena = std.heap.ArenaAllocator.init(alloc.allocator());
         defer arena.deinit();
@@ -259,8 +260,8 @@ pub const Position = struct {
 
         if (self.getFen(allocator)) |fen| {
             std.debug.print("fen: {s}\n", .{fen});
-        } else |_| {
-            std.debug.print("err reading fen\n", .{});
+        } else |err| {
+            std.debug.print("Error {s} reading fen\n", .{@errorName(err)});
         }
         std.debug.print("zobrist: {}\n", .{self.zobrist});
     }
