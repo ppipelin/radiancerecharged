@@ -20,7 +20,7 @@ test "Position" {
 
     pos.remove(types.Piece.w_knight, types.Square.f3);
     try expect(pos.board[types.Square.f3.index()] == types.Piece.none);
-    try expect(pos.bb_pieces[types.Piece.w_knight.index()] == 0);
+    try expect(pos.bb_pieces[types.PieceType.knight.index()] == 0);
 }
 
 test "Fen" {

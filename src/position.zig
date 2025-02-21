@@ -7,6 +7,7 @@ const Color = types.Color;
 const Direction = types.Direction;
 const File = types.File;
 const Move = types.Move;
+const MoveFlags = types.MoveFlags;
 const Piece = types.Piece;
 const PieceType = types.PieceType;
 const Rank = types.Rank;
@@ -167,10 +168,10 @@ pub const Position = struct {
             PieceType.pawn => {
                 // Updates enPassant if possible next turn
                 switch (move.getFlags()) {
-                    types.MoveFlags.double_push => {
+                    MoveFlags.double_push => {
                         self.state.en_passant = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
                     },
-                    types.MoveFlags.en_passant => {
+                    MoveFlags.en_passant => {
                         const en_passant_sq = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
                         self.state.last_captured_piece = self.board[en_passant_sq];
 
@@ -225,14 +226,14 @@ pub const Position = struct {
 
         // If castling we move the rook as well
         switch (move.getFlags()) {
-            types.MoveFlags.oo => {
+            MoveFlags.oo => {
                 var tmp: State = State{};
                 state = self.state;
                 self.movePiece(Move{ .flags = 0, .from = from + 3, .to = from + 3 - 2 }, &tmp); // CHESS 960 BUG
                 // We have moved, we need to set the turn back
                 self.state = &state;
             },
-            types.MoveFlags.ooo => {
+            MoveFlags.ooo => {
                 var tmp: State = State{};
                 state = self.state;
                 self.movePiece(Move{ .flags = 0, .from = from - 4, .to = from - 4 + 3 }, &tmp); // CHESS 960 BUG
@@ -289,9 +290,9 @@ pub const Position = struct {
         }
 
         // If castling we move the rook as well
-        if (move.getFlags() == types.MoveFlags.oo) {
+        if (move.getFlags() == MoveFlags.oo) {
             unMovePiece(Move{ .from = from + 3, .to = from + 3 - 2 }, true);
-        } else if (move.getFlags() == types.MoveFlags.ooo) {
+        } else if (move.getFlags() == MoveFlags.ooo) {
             unMovePiece(Move{ .from = from - 4, .to = from - 4 + 3 }, true);
         }
     }
@@ -301,19 +302,30 @@ pub const Position = struct {
         const them_bb = self.bb_colors[color.invert().index()];
         const all_bb = us_bb | them_bb;
 
-        std.debug.print("col {d}\n\n", .{color.index()});
-        types.debugPrintBitboard(us_bb);
         for (std.enums.values(PieceType)) |pt| {
             if (pt == PieceType.none)
                 continue;
+
             var from_bb: Bitboard = self.bb_pieces[pt.index()] & us_bb;
             while (from_bb != 0) {
-                const from = types.popLsb(&from_bb);
+                const from: Square = types.popLsb(&from_bb);
                 const to: Bitboard = tables.getAttacks(pt, from, all_bb);
+
                 // Capture
-                Move.generateMove(types.MoveFlags.capture, from, to & ~all_bb, list);
+                Move.generateMove(MoveFlags.capture, from, to & ~all_bb, list);
+
                 // Quiet
-                Move.generateMove(types.MoveFlags.quiet, from, to & them_bb, list);
+                if (pt == PieceType.pawn) {
+                    // Double push
+                    if (self.board[from.add(Direction.north.relative_dir(color)).index()] == Piece.none) {
+                        list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relative_dir(color)).index()) }) catch unreachable;
+                        if (from.rank() == Rank.r2.relative_rank(color) and self.board[from.add(Direction.north_north.relative_dir(color)).index()] == Piece.none) {
+                            list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relative_dir(color)).index()) }) catch unreachable;
+                        }
+                    }
+                } else {
+                    Move.generateMove(MoveFlags.quiet, from, to & them_bb, list);
+                }
             }
         }
     }
@@ -326,7 +338,7 @@ pub const Position = struct {
             std.debug.print("{s} ", .{line});
             var j: i32 = 0;
             while (j < 8) : (j += 1) {
-                std.debug.print("| {c} ", .{types.PieceNotation[self.board[@intCast(i + j)].index()]});
+                std.debug.print("| {c} ", .{@intFromEnum(self.board[@intCast(i + j)])});
             }
             std.debug.print("| {}\n", .{@divTrunc(i, 8) + 1});
         }
@@ -350,16 +362,6 @@ pub const Position = struct {
         std.debug.print("zobrist: {}\n", .{self.zobrist});
     }
 
-    /// Find char c in arr
-    fn first_index(arr: []const u8, c: u8) ?usize {
-        for (0..arr.len) |i| {
-            if (arr[i] == c) {
-                return i;
-            }
-        }
-        return null;
-    }
-
     pub fn getFen(self: *const Position, allocator: std.mem.Allocator) ![]const u8 {
         var fen = std.ArrayList(u8).init(allocator);
         var i: i8 = Square.a8.index();
@@ -367,15 +369,15 @@ pub const Position = struct {
             var blank_counter: u8 = 0;
             var j: i8 = 0;
             while (j < 8) : (j += 1) {
-                const idx = self.board[@intCast(i + j)].index();
-                if (idx == 0) {
+                const p: Piece = self.board[@intCast(i + j)];
+                if (p == Piece.none) {
                     blank_counter += 1;
                 } else {
                     if (blank_counter != 0) {
                         try fen.append('0' + blank_counter);
                         blank_counter = 0;
                     }
-                    try fen.append(types.PieceNotation[idx]);
+                    try fen.append(p.index());
                 }
             }
             if (blank_counter != 0) {
@@ -423,7 +425,7 @@ pub const Position = struct {
             } else if (ch == '/') {
                 sq += Direction.south.index() * 2;
             } else {
-                pos.add(@enumFromInt(first_index(types.PieceNotation, ch).?), @enumFromInt(sq));
+                pos.add(Piece.first_index(ch).?, @enumFromInt(sq));
                 sq += 1;
             }
         }

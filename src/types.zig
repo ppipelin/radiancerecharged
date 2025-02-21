@@ -108,6 +108,10 @@ pub const Direction = enum(i32) {
     pub inline fn index(self: Direction) i8 {
         return @intFromEnum(self);
     }
+
+    pub inline fn relative_dir(self: Direction, c: Color) Direction {
+        return if (c == Color.white) self else @enumFromInt(-self.index());
+    }
 };
 
 pub const File = enum(u8) {
@@ -139,9 +143,9 @@ pub const Rank = enum(u8) {
         return @intFromEnum(self);
     }
 
-    // pub inline fn relative_rank(self: Rank, comptime c: Color) Rank {
-    //     return if (c == Color.White) self else @enumFromInt(@intFromEnum(Rank.RANK8) - @intFromEnum(self));
-    // }
+    pub inline fn relative_rank(self: Rank, c: Color) Rank {
+        return if (c == Color.white) self else @enumFromInt(Rank.r8.index() - self.index());
+    }
 };
 
 pub const PieceType = enum(u3) {
@@ -166,33 +170,50 @@ pub const PieceType = enum(u3) {
     }
 };
 
-pub const PieceNotation: []const u8 = " pnbrqkPNBRQK";
-
-pub const Piece = enum(u4) {
-    none,
-    w_pawn,
-    w_knight,
-    w_bishop,
-    w_rook,
-    w_queen,
-    b_pawn,
-    b_knight,
-    b_bishop,
-    b_rook,
-    b_queen,
-    b_king,
-    w_king,
+pub const Piece = enum(u8) {
+    none = ' ',
+    b_pawn = 'p',
+    b_knight = 'n',
+    b_bishop = 'b',
+    b_rook = 'r',
+    b_queen = 'q',
+    b_king = 'k',
+    w_pawn = 'P',
+    w_knight = 'N',
+    w_bishop = 'B',
+    w_rook = 'R',
+    w_queen = 'Q',
+    w_king = 'K',
 
     pub inline fn index(self: Piece) u8 {
         return @intFromEnum(self);
     }
 
     pub inline fn pieceToPieceType(self: Piece) PieceType {
-        return @enumFromInt(@intFromEnum(self) % 6);
+        return switch (self) {
+            Piece.b_pawn, Piece.w_pawn => PieceType.pawn,
+            Piece.b_knight, Piece.w_knight => PieceType.knight,
+            Piece.b_bishop, Piece.w_bishop => PieceType.bishop,
+            Piece.b_rook, Piece.w_rook => PieceType.rook,
+            Piece.b_queen, Piece.w_queen => PieceType.queen,
+            Piece.b_king, Piece.w_king => PieceType.king,
+            else => PieceType.none,
+        };
     }
 
     pub inline fn pieceToColor(self: Piece) Color {
-        return @enumFromInt(@intFromBool(self.index() > 6));
+        std.debug.assert(self != Piece.none);
+        return @enumFromInt(@intFromBool(self.index() < 'a'));
+    }
+
+    /// Find char c in arr
+    pub inline fn first_index(c: u8) ?Piece {
+        for (std.enums.values(Piece)) |i| {
+            if (i.index() == c) {
+                return i;
+            }
+        }
+        return null;
     }
 };
 
