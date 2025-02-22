@@ -4,7 +4,7 @@ const std = @import("std");
 
 ////// Chess //////
 
-pub const board_size = 8;
+pub const board_size: comptime_int = 8;
 pub const board_size2 = board_size * board_size;
 
 // zig fmt: off
@@ -73,6 +73,10 @@ pub const Square = enum(u8) {
 
     pub inline fn sqToBB(self: Square) Bitboard {
         const sq: u6 = @truncate(@intFromEnum(self));
+        return intToBB(sq);
+    }
+
+    pub inline fn intToBB(sq: u6) Bitboard {
         return @shlExact(@as(Bitboard, 1), sq);
     }
 
@@ -114,7 +118,7 @@ pub const Direction = enum(i32) {
     }
 };
 
-pub const File = enum(u8) {
+pub const File = enum(u3) {
     fa,
     fb,
     fc,
@@ -124,12 +128,12 @@ pub const File = enum(u8) {
     fg,
     fh,
 
-    pub inline fn index(self: File) u8 {
+    pub inline fn index(self: File) u3 {
         return @intFromEnum(self);
     }
 };
 
-pub const Rank = enum(u8) {
+pub const Rank = enum(u3) {
     r1,
     r2,
     r3,
@@ -139,7 +143,7 @@ pub const Rank = enum(u8) {
     r7,
     r8,
 
-    pub inline fn index(self: Rank) u8 {
+    pub inline fn index(self: Rank) u3 {
         return @intFromEnum(self);
     }
 
@@ -343,13 +347,13 @@ pub const value_none: Value = value_mate + 2;
 
 pub const Bitboard = u64;
 
-pub const column: Bitboard = 0x0101010101010101; // A file
-pub const row: Bitboard = 0xFF; // First rank
+pub const file: Bitboard = 0x0101010101010101; // A file
+pub const rank: Bitboard = 0xFF; // First rank
 pub const diagonal_clockwise: Bitboard = 0b1000000001000000001000000001000000001000000001000000001000000001;
 pub const diagonal_counter_clockwise: Bitboard = 0b0000000100000010000001000000100000010000001000000100000010000000;
 
-pub const mask_file = [_]Bitboard{ column, column << 1, column << 2, column << 3, column << 4, column << 5, column << 6, column << 7 };
-pub const mask_rank = [_]Bitboard{ row, row << board_size * 1, row << board_size * 2, row << board_size * 3, row << board_size * 4, row << board_size * 5, row << board_size * 7, row << board_size * 5 };
+pub const mask_file = [_]Bitboard{ file, file << 1, file << 2, file << 3, file << 4, file << 5, file << 6, file << 7 };
+pub const mask_rank = [_]Bitboard{ rank, rank << board_size * 1, rank << board_size * 2, rank << board_size * 3, rank << board_size * 4, rank << board_size * 5, rank << board_size * 7, rank << board_size * 5 };
 
 // pub const mask_diagonal = [_]Bitboard{
 //     diagonal_clockwise >> 7,  diagonal_clockwise >> 6,  diagonal_clockwise >> 5,  diagonal_clockwise >> 4,  diagonal_clockwise >> 3,  diagonal_clockwise >> 2,  diagonal_clockwise >> 1,

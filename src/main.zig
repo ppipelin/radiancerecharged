@@ -26,6 +26,11 @@ pub fn main() !void {
         try stdout.print("\n", .{});
     }
 
+    // for (0..64) |i| {
+    //     types.debugPrintBitboard(tables.movesBishopMask[i]);
+    //     types.debugPrintBitboard(tables.movesRookMask[i]);
+    // }
+
     try stdout.print("Run `zig build test` to run the tests.\n", .{});
 
     try bw.flush(); // don't forget to flush!

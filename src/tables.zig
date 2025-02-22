@@ -2,29 +2,95 @@ const std = @import("std");
 const types = @import("types.zig");
 
 const Color = types.Color;
+const Bitboard = types.Bitboard;
 
-pub var pseudoLegalAttacks: [types.PieceType.nb()][types.board_size2]types.Bitboard = std.mem.zeroes([types.PieceType.nb()][types.board_size2]types.Bitboard);
-pub var pawnAttacks: [types.Color.nb()][types.board_size2]types.Bitboard = std.mem.zeroes([types.Color.nb()][types.board_size2]types.Bitboard);
+pub var movesBishopMask: [64]Bitboard = std.mem.zeroes([64]Bitboard);
+pub var movesRookMask: [64]Bitboard = std.mem.zeroes([64]Bitboard);
+pub var pseudoLegalAttacks: [types.PieceType.nb()][types.board_size2]Bitboard = std.mem.zeroes([types.PieceType.nb()][types.board_size2]Bitboard);
+pub var pawnAttacks: [types.Color.nb()][types.board_size2]Bitboard = std.mem.zeroes([types.Color.nb()][types.board_size2]Bitboard);
+
+pub inline fn filterMovesBishop(sq: types.Square) Bitboard {
+    var b: Bitboard = 0;
+    const sq_bb: Bitboard = sq.sqToBB();
+    // Surely not the fastest: finds the diagonals that collides with tile
+    for (0..types.board_size - 1) |i| {
+        // Shifts is bounded by overflow
+        // Diagonals go up
+        const computed_clockwise_up: Bitboard = types.diagonal_clockwise << @intCast(i * types.board_size);
+        if (computed_clockwise_up & sq_bb > 0)
+            b |= computed_clockwise_up;
+
+        const computed_counter_clockwise_up: Bitboard = types.diagonal_counter_clockwise << @intCast(i * types.board_size);
+        if (computed_counter_clockwise_up & sq_bb > 0)
+            b |= computed_counter_clockwise_up;
+
+        // Diagonals go down
+        const computedClockwiseDown: Bitboard = types.diagonal_clockwise >> @intCast(i * types.board_size);
+        if (computedClockwiseDown & sq_bb > 0)
+            b |= computedClockwiseDown;
+
+        const computedCounterClockwiseDown: Bitboard = types.diagonal_counter_clockwise >> @intCast(i * types.board_size);
+        if (computedCounterClockwiseDown & sq_bb > 0)
+            b |= computedCounterClockwiseDown;
+    }
+
+    b &= ~sq_bb;
+
+    // Remove bordered square as they can be treated as blockers
+
+    b &= ~types.file;
+    b &= ~(types.file << (types.board_size - 1));
+    b &= ~types.rank;
+    b &= ~(types.rank << (types.board_size - 1) * types.board_size);
+    return b;
+}
+
+pub inline fn filterMovesRook(sq: types.Square) Bitboard {
+    var b: Bitboard = 0;
+    const current_file: u6 = sq.file().index();
+    const current_rank: u6 = sq.rank().index();
+
+    b |= types.file << current_file;
+    b |= types.rank << (current_rank * types.board_size);
+    b &= ~sq.sqToBB();
+
+    // Remove bordered square as they can be treated as blockers
+    b &= ~types.Square.intToBB(0 + current_file); // Bottom
+    b &= ~types.Square.intToBB(types.board_size2 - types.board_size + current_file); // Top
+    b &= ~types.Square.intToBB(types.board_size - 1 + (current_rank * types.board_size)); // Right
+    b &= ~types.Square.intToBB(current_rank * types.board_size); // Left
+
+    return b;
+}
+
+pub fn initSlidersAttacks() void {
+    var sq: types.Square = types.Square.a1;
+    while (sq != types.Square.none) : (sq = sq.inc().*) {
+        movesBishopMask[sq.index()] = filterMovesBishop(sq);
+        movesRookMask[sq.index()] = filterMovesRook(sq);
+    }
+}
 
 pub fn initPseudoLegal() void {
-    std.mem.copyForwards(types.Bitboard, pawnAttacks[Color.black.index()][0..types.board_size2], blackPawnAttacks[0..types.board_size2]);
-    std.mem.copyForwards(types.Bitboard, pawnAttacks[Color.white.index()][0..types.board_size2], whitePawnAttacks[0..types.board_size2]);
-    std.mem.copyForwards(types.Bitboard, pseudoLegalAttacks[types.PieceType.knight.index()][0..types.board_size2], knightAttacks[0..types.board_size2]);
-    std.mem.copyForwards(types.Bitboard, pseudoLegalAttacks[types.PieceType.king.index()][0..types.board_size2], kingAttacks[0..types.board_size2]);
+    std.mem.copyForwards(Bitboard, pawnAttacks[Color.black.index()][0..types.board_size2], blackPawnAttacks[0..types.board_size2]);
+    std.mem.copyForwards(Bitboard, pawnAttacks[Color.white.index()][0..types.board_size2], whitePawnAttacks[0..types.board_size2]);
+    std.mem.copyForwards(Bitboard, pseudoLegalAttacks[types.PieceType.knight.index()][0..types.board_size2], knightAttacks[0..types.board_size2]);
+    std.mem.copyForwards(Bitboard, pseudoLegalAttacks[types.PieceType.king.index()][0..types.board_size2], kingAttacks[0..types.board_size2]);
     var sq: usize = types.Square.a1.index();
 
     while (sq <= types.Square.h8.index()) : (sq += 1) {
-        // pseudoLegalAttacks[types.PieceType.Bishop.index()][sq] = get_bishop_attacks_for_init(@enumFromInt(types.Square, sq), 0);
-        // pseudoLegalAttacks[types.PieceType.Rook.index()][sq] = get_rook_attacks_for_init(@enumFromInt(types.Square, sq), 0);
-        // pseudoLegalAttacks[types.PieceType.Queen.index()][sq] = pseudoLegalAttacks[types.PieceType.Bishop.index()][sq] | pseudoLegalAttacks[types.PieceType.Rook.index()][sq];
+        // pseudoLegalAttacks[types.PieceType.bishop.index()][sq] = getBishopAttacksForInit(@enumFromInt(types.Square, sq), 0);
+        // pseudoLegalAttacks[types.PieceType.rook.index()][sq] = getRookAttacksForInit(@enumFromInt(types.Square, sq), 0);
+        pseudoLegalAttacks[types.PieceType.queen.index()][sq] = pseudoLegalAttacks[types.PieceType.bishop.index()][sq] | pseudoLegalAttacks[types.PieceType.rook.index()][sq];
     }
 }
 
 pub fn initAll() void {
-    initPseudoLegal();
+    initSlidersAttacks();
+    initPseudoLegal(); // Include blockers
 }
 
-pub inline fn getAttacks(pt: types.PieceType, sq: types.Square, occupied: types.Bitboard) types.Bitboard {
+pub inline fn getAttacks(pt: types.PieceType, sq: types.Square, occupied: Bitboard) Bitboard {
     _ = occupied;
     return switch (pt) {
         types.PieceType.rook => 0, // getRookAttacks(sq, occupied),
@@ -35,7 +101,7 @@ pub inline fn getAttacks(pt: types.PieceType, sq: types.Square, occupied: types.
 }
 
 // zig fmt: off
-pub const kingAttacks = [64]types.Bitboard{
+pub const kingAttacks = [64]Bitboard{
     0x302,              0x705,              0xe0a,               0x1c14,              0x3828,              0x7050,              0xe0a0,              0xc040,
     0x30203,            0x70507,            0xe0a0e,             0x1c141c,            0x382838,            0x705070,            0xe0a0e0,            0xc040c0,
     0x3020300,          0x7050700,          0xe0a0e00,           0x1c141c00,          0x38283800,          0x70507000,          0xe0a0e000,          0xc040c000,
@@ -46,7 +112,7 @@ pub const kingAttacks = [64]types.Bitboard{
     0x203000000000000,  0x507000000000000,  0xa0e000000000000,   0x141c000000000000,  0x2838000000000000,  0x5070000000000000,  0xa0e0000000000000,  0x40c0000000000000,
 };
 
-pub const knightAttacks = [64]types.Bitboard{
+pub const knightAttacks = [64]Bitboard{
     0x20400,            0x50800,            0xa1100,             0x142200,            0x284400,            0x508800,            0xa01000,            0x402000,
     0x2040004,          0x5080008,          0xa110011,           0x14220022,          0x28440044,          0x50880088,          0xa0100010,          0x40200020,
     0x204000402,        0x508000805,        0xa1100110a,         0x1422002214,        0x2844004428,        0x5088008850,        0xa0100010a0,        0x4020002040,
@@ -57,7 +123,7 @@ pub const knightAttacks = [64]types.Bitboard{
     0x4020000000000,    0x8050000000000,    0x110a0000000000,    0x22140000000000,    0x44280000000000,    0x0088500000000000,  0x0010a00000000000,  0x20400000000000,
 };
 
-pub const whitePawnAttacks = [64]types.Bitboard{
+pub const whitePawnAttacks = [64]Bitboard{
     0x200,              0x500,              0xa00,              0x1400,              0x2800,               0x5000,              0xa000,              0x4000,
     0x20000,            0x50000,            0xa0000,            0x140000,            0x280000,             0x500000,            0xa00000,            0x400000,
     0x2000000,          0x5000000,          0xa000000,          0x14000000,          0x28000000,           0x50000000,          0xa0000000,          0x40000000,
@@ -68,7 +134,7 @@ pub const whitePawnAttacks = [64]types.Bitboard{
     0x0,                0x0,                0x0,                0x0,                 0x0,                  0x0,                 0x0,                 0x0,
 };
 
-pub const blackPawnAttacks = [64]types.Bitboard{
+pub const blackPawnAttacks = [64]Bitboard{
     0x0,                0x0,                0x0,                0x0,                 0x0,                  0x0,                 0x0,                 0x0,
     0x2,                0x5,                0xa,                0x14,                0x28,                 0x50,                0xa0,                0x40,
     0x200,              0x500,              0xa00,              0x1400,              0x2800,               0x5000,              0xa000,              0x4000,
@@ -80,7 +146,7 @@ pub const blackPawnAttacks = [64]types.Bitboard{
 };
 // zig fmt: on
 
-pub inline fn reverseBitboard(b_: types.Bitboard) types.Bitboard {
+pub inline fn reverseBitboard(b_: Bitboard) Bitboard {
     var b = b_;
     b = (b & 0x5555555555555555) << 1 | ((b >> 1) & 0x5555555555555555);
     b = (b & 0x3333333333333333) << 2 | ((b >> 2) & 0x3333333333333333);
@@ -93,7 +159,7 @@ pub inline fn reverseBitboard(b_: types.Bitboard) types.Bitboard {
 
 // Hyperbola Quintessence Algorithm
 // https://www.chessprogramming.org/Hyperbola_Quintessence
-pub inline fn slidingAttack(square: types.Square, occ: types.Bitboard, mask: types.Bitboard) types.Bitboard {
+pub inline fn slidingAttack(square: types.Square, occ: Bitboard, mask: Bitboard) Bitboard {
     const idx = square.index();
     return (((mask & occ) -% types.SquareIndexBB[square] *% 2) ^
         reverseBitboard(reverseBitboard(mask & occ) -% reverseBitboard(types.SquareIndexBB[idx]) *% 2)) & mask;

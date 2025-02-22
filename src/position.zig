@@ -348,7 +348,7 @@ pub const Position = struct {
         std.debug.print("{s} to move\n", .{if (self.state.turn == Color.white) "White" else "Black"});
 
         // Size of buffer could be 90 but std.fmt.allocPrint and ArenaAllocator requires more
-        var buffer: [200]u8 = undefined;
+        var buffer: [300]u8 = undefined;
         var alloc = std.heap.FixedBufferAllocator.init(&buffer);
         var arena = std.heap.ArenaAllocator.init(alloc.allocator());
         defer arena.deinit();
