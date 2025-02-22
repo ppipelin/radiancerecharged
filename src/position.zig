@@ -69,6 +69,7 @@ pub const Position = struct {
     state: *State = undefined,
 
     pub fn new(state: *State) Position {
+        state.* = State{};
         var pos = Position{};
 
         @memset(pos.board[0..types.board_size2], Piece.none);
@@ -125,7 +126,7 @@ pub const Position = struct {
             return error.MoveNone;
         }
 
-        // Remove last enPassant
+        // Remove last en_passant
         if (self.state.previous.en_passant != Square.none) {
             // self.state.material_key ^= Zobrist::enPassant[Board::column(m_board->enPassant())];
         }
@@ -166,7 +167,7 @@ pub const Position = struct {
                 }
             },
             PieceType.pawn => {
-                // Updates enPassant if possible next turn
+                // Updates en_passant if possible next turn
                 switch (move.getFlags()) {
                     MoveFlags.double_push => {
                         self.state.en_passant = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
@@ -302,6 +303,9 @@ pub const Position = struct {
         const them_bb = self.bb_colors[color.invert().index()];
         const all_bb = us_bb | them_bb;
 
+        // We first have to compute if is in check or double check
+        // We then have to compute check blockers
+
         for (std.enums.values(PieceType)) |pt| {
             if (pt == PieceType.none)
                 continue;
@@ -309,22 +313,23 @@ pub const Position = struct {
             var from_bb: Bitboard = self.bb_pieces[pt.index()] & us_bb;
             while (from_bb != 0) {
                 const from: Square = types.popLsb(&from_bb);
-                const to: Bitboard = tables.getAttacks(pt, from, all_bb);
+                const to: Bitboard = tables.getAttacks(pt, color, from, all_bb) & ~us_bb;
 
                 // Capture
-                Move.generateMove(MoveFlags.capture, from, to & ~all_bb, list);
+                Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
 
                 // Quiet
                 if (pt == PieceType.pawn) {
-                    // Double push
+                    // Push
                     if (self.board[from.add(Direction.north.relative_dir(color)).index()] == Piece.none) {
                         list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relative_dir(color)).index()) }) catch unreachable;
+                        // Double push
                         if (from.rank() == Rank.r2.relative_rank(color) and self.board[from.add(Direction.north_north.relative_dir(color)).index()] == Piece.none) {
                             list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relative_dir(color)).index()) }) catch unreachable;
                         }
                     }
                 } else {
-                    Move.generateMove(MoveFlags.quiet, from, to & them_bb, list);
+                    Move.generateMove(MoveFlags.quiet, from, to & ~all_bb, list);
                 }
             }
         }
@@ -348,7 +353,7 @@ pub const Position = struct {
         std.debug.print("{s} to move\n", .{if (self.state.turn == Color.white) "White" else "Black"});
 
         // Size of buffer could be 90 but std.fmt.allocPrint and ArenaAllocator requires more
-        var buffer: [200]u8 = undefined;
+        var buffer: [300]u8 = undefined;
         var alloc = std.heap.FixedBufferAllocator.init(&buffer);
         var arena = std.heap.ArenaAllocator.init(alloc.allocator());
         defer arena.deinit();
@@ -415,6 +420,7 @@ pub const Position = struct {
     }
 
     pub fn setFen(state: *State, fen: []const u8) Position {
+        state.* = State{};
         var pos: Position = Position.new(state);
         var sq: i32 = Square.a8.index();
         var tokens = std.mem.tokenizeScalar(u8, fen, ' ');

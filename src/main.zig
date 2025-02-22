@@ -15,9 +15,16 @@ pub fn main() !void {
     var pos = position.Position.setFen(&state, position.start_fen);
     pos.debugPrint();
 
-    var list = std.ArrayList(types.Move).init(std.heap.page_allocator);
+    // Estimated max should be (2^12*64*2) * 64 / 8 u8 = 4_194_304
+    var buffer: [10_000_000]u8 = undefined;
+    var alloc = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = alloc.allocator();
+    tables.initAll(allocator);
+    defer tables.deinitAll();
 
-    tables.initAll();
+    var list = std.ArrayList(types.Move).init(std.heap.page_allocator);
+    defer list.deinit();
+
     pos.generateLegalMoves(pos.state.turn, &list);
 
     std.debug.print("nb of moves: {d}\n", .{list.items.len});
