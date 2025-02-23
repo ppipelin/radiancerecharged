@@ -4,8 +4,10 @@ const types = @import("types.zig");
 const Color = types.Color;
 const Bitboard = types.Bitboard;
 
-pub var movesBishopMask: [64]Bitboard = std.mem.zeroes([64]Bitboard);
-pub var movesRookMask: [64]Bitboard = std.mem.zeroes([64]Bitboard);
+pub var moves_bishop_mask: [types.board_size2]Bitboard = std.mem.zeroes([types.board_size2]Bitboard);
+pub var moves_rook_mask: [types.board_size2]Bitboard = std.mem.zeroes([types.board_size2]Bitboard);
+pub var moves_rook: [types.board_size2]std.AutoHashMap(Bitboard, Bitboard) = undefined;
+pub var moves_bishop: [types.board_size2]std.AutoHashMap(Bitboard, Bitboard) = undefined;
 pub var pseudoLegalAttacks: [types.PieceType.nb()][types.board_size2]Bitboard = std.mem.zeroes([types.PieceType.nb()][types.board_size2]Bitboard);
 pub var pawnAttacks: [types.Color.nb()][types.board_size2]Bitboard = std.mem.zeroes([types.Color.nb()][types.board_size2]Bitboard);
 
@@ -63,11 +65,46 @@ pub inline fn filterMovesRook(sq: types.Square) Bitboard {
     return b;
 }
 
-pub fn initSlidersAttacks() void {
+pub fn computeBlockers(mask_: Bitboard, v: *std.ArrayList(Bitboard)) void {
+    const bit_indices_size: u4 = @truncate(@popCount(mask_)); // Max is (types.board_size)*2-3
+    for (1..std.math.pow(u64, 2, bit_indices_size)) |blocker_configuration| {
+        var mask: Bitboard = mask_;
+        var currentBlockerBB: Bitboard = 0;
+        var cnt: u6 = 0;
+        while (mask != 0) : (cnt += 1) {
+            const bit_idx: u6 = @truncate(types.popLsb(&mask).index());
+
+            const current_bit: Bitboard = (@as(u64, blocker_configuration) >> cnt) & 1; // Is the shifted bit in blocker_configuration activated
+            currentBlockerBB |= current_bit << bit_idx; // Shift it back to its position
+        }
+        v.append(currentBlockerBB) catch unreachable;
+    }
+}
+
+pub fn initSlidersAttacks(alloc: std.mem.Allocator) void {
+    // Compute moveable squares
     var sq: types.Square = types.Square.a1;
     while (sq != types.Square.none) : (sq = sq.inc().*) {
-        movesBishopMask[sq.index()] = filterMovesBishop(sq);
-        movesRookMask[sq.index()] = filterMovesRook(sq);
+        moves_bishop_mask[sq.index()] = filterMovesBishop(sq);
+        moves_rook_mask[sq.index()] = filterMovesRook(sq);
+    }
+
+    // Compute rook blockers
+    sq = types.Square.a1;
+    while (sq != types.Square.none) : (sq = sq.inc().*) {
+        moves_rook[sq.index()] = std.AutoHashMap(Bitboard, Bitboard).init(alloc);
+        var moves_rook_blockers = std.ArrayList(Bitboard).init(alloc);
+        defer moves_rook_blockers.deinit();
+        computeBlockers(moves_rook_mask[sq.index()], &moves_rook_blockers);
+
+        for (moves_rook_blockers.items) |blockers| {
+            moves_rook[sq.index()].put(blockers, 0) catch unreachable;
+        }
+
+        // var moves_bishop_blockers = std.ArrayList(Bitboard).init(alloc);
+        // computeBlockers(moves_bishop_mask[sq.index()], &moves_bishop_blockers);
+        // std.debug.print("size {}\n", .{moves_bishop_blockers.capacity});
+        // moves_bishop_blockers.deinit();
     }
 }
 
@@ -85,9 +122,17 @@ pub fn initPseudoLegal() void {
     }
 }
 
-pub fn initAll() void {
-    initSlidersAttacks();
+pub fn initAll(alloc: std.mem.Allocator) void {
+    initSlidersAttacks(alloc);
     initPseudoLegal(); // Include blockers
+}
+
+pub fn deinitAll() void {
+    var sq: u8 = types.Square.a1.index();
+    while (sq <= types.Square.h8.index()) : (sq += 1) {
+        moves_bishop[sq].deinit();
+        moves_rook[sq].deinit();
+    }
 }
 
 pub inline fn getAttacks(pt: types.PieceType, sq: types.Square, occupied: Bitboard) Bitboard {

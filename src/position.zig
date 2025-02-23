@@ -302,6 +302,9 @@ pub const Position = struct {
         const them_bb = self.bb_colors[color.invert().index()];
         const all_bb = us_bb | them_bb;
 
+        // We first have to compute if is in check or double check
+        // We then have to compute check blockers
+
         for (std.enums.values(PieceType)) |pt| {
             if (pt == PieceType.none)
                 continue;
