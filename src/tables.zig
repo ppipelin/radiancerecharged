@@ -139,12 +139,12 @@ pub fn deinitAll() void {
     }
 }
 
-pub inline fn getAttacks(pt: types.PieceType, sq: types.Square, occupied: Bitboard) Bitboard {
-    _ = occupied;
+pub inline fn getAttacks(pt: types.PieceType, sq: types.Square, blockers: Bitboard) Bitboard {
+    types.debugPrintBitboard(moves_rook_mask[sq.index()]);
     return switch (pt) {
-        types.PieceType.rook => 0, // getRookAttacks(sq, occupied),
-        types.PieceType.bishop => 0, // getBishopAttacks(sq, occupied),
-        types.PieceType.queen => 0, // getRookAttacks(sq, occupied) | getBishopAttacks(sq, occupied),
+        types.PieceType.rook => moves_rook[sq.index()].get(moves_rook_mask[sq.index()] & blockers) orelse 0,
+        types.PieceType.bishop => moves_bishop[sq.index()].get(moves_bishop_mask[sq.index()] & blockers) orelse 0,
+        types.PieceType.queen => (moves_rook[sq.index()].get(moves_rook_mask[sq.index()] & blockers) orelse 0) | (moves_bishop[sq.index()].get(moves_bishop_mask[sq.index()] & blockers) orelse 0),
         else => pseudoLegalAttacks[pt.index()][sq.index()],
     };
 }

@@ -313,9 +313,11 @@ pub const Position = struct {
             while (from_bb != 0) {
                 const from: Square = types.popLsb(&from_bb);
                 const to: Bitboard = tables.getAttacks(pt, from, all_bb);
+                std.debug.print("{}\n", .{from});
+                types.debugPrintBitboard(to);
 
                 // Capture
-                Move.generateMove(MoveFlags.capture, from, to & ~all_bb, list);
+                Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
 
                 // Quiet
                 if (pt == PieceType.pawn) {
@@ -327,7 +329,7 @@ pub const Position = struct {
                         }
                     }
                 } else {
-                    Move.generateMove(MoveFlags.quiet, from, to & them_bb, list);
+                    Move.generateMove(MoveFlags.quiet, from, to & ~all_bb, list);
                 }
             }
         }
