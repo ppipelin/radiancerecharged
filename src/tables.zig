@@ -101,30 +101,34 @@ pub fn initSlidersAttacks(alloc: std.mem.Allocator) void {
             moves_rook[sq.index()].put(blockers, 0) catch unreachable;
         }
 
-        // var moves_bishop_blockers = std.ArrayList(Bitboard).init(alloc);
-        // computeBlockers(moves_bishop_mask[sq.index()], &moves_bishop_blockers);
-        // std.debug.print("size {}\n", .{moves_bishop_blockers.capacity});
-        // moves_bishop_blockers.deinit();
+        moves_bishop[sq.index()] = std.AutoHashMap(Bitboard, Bitboard).init(alloc);
+        var moves_bishop_blockers = std.ArrayList(Bitboard).init(alloc);
+        defer moves_bishop_blockers.deinit();
+        computeBlockers(moves_bishop_mask[sq.index()], &moves_bishop_blockers);
+
+        for (moves_bishop_blockers.items) |blockers| {
+            moves_bishop[sq.index()].put(blockers, 0) catch unreachable;
+        }
     }
 }
 
-pub fn initPseudoLegal() void {
+pub fn initNonBlocked() void {
     std.mem.copyForwards(Bitboard, pawnAttacks[Color.black.index()][0..types.board_size2], blackPawnAttacks[0..types.board_size2]);
     std.mem.copyForwards(Bitboard, pawnAttacks[Color.white.index()][0..types.board_size2], whitePawnAttacks[0..types.board_size2]);
     std.mem.copyForwards(Bitboard, pseudoLegalAttacks[types.PieceType.knight.index()][0..types.board_size2], knightAttacks[0..types.board_size2]);
     std.mem.copyForwards(Bitboard, pseudoLegalAttacks[types.PieceType.king.index()][0..types.board_size2], kingAttacks[0..types.board_size2]);
-    var sq: usize = types.Square.a1.index();
+    // var sq: usize = types.Square.a1.index();
 
-    while (sq <= types.Square.h8.index()) : (sq += 1) {
-        // pseudoLegalAttacks[types.PieceType.bishop.index()][sq] = getBishopAttacksForInit(@enumFromInt(types.Square, sq), 0);
-        // pseudoLegalAttacks[types.PieceType.rook.index()][sq] = getRookAttacksForInit(@enumFromInt(types.Square, sq), 0);
-        pseudoLegalAttacks[types.PieceType.queen.index()][sq] = pseudoLegalAttacks[types.PieceType.bishop.index()][sq] | pseudoLegalAttacks[types.PieceType.rook.index()][sq];
-    }
+    // while (sq <= types.Square.h8.index()) : (sq += 1) {
+    //     // pseudoLegalAttacks[types.PieceType.bishop.index()][sq] = getBishopAttacksForInit(@enumFromInt(types.Square, sq), 0);
+    //     // pseudoLegalAttacks[types.PieceType.rook.index()][sq] = getRookAttacksForInit(@enumFromInt(types.Square, sq), 0);
+    //     pseudoLegalAttacks[types.PieceType.queen.index()][sq] = pseudoLegalAttacks[types.PieceType.bishop.index()][sq] | pseudoLegalAttacks[types.PieceType.rook.index()][sq];
+    // }
 }
 
 pub fn initAll(alloc: std.mem.Allocator) void {
     initSlidersAttacks(alloc);
-    initPseudoLegal(); // Include blockers
+    initNonBlocked();
 }
 
 pub fn deinitAll() void {
