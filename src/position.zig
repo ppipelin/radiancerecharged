@@ -63,6 +63,10 @@ pub const Position = struct {
     bb_pieces: [PieceType.nb()]Bitboard = undefined,
     bb_colors: [Color.nb()]Bitboard = undefined,
 
+    // Stores the enemy pieces that are attacking the king and pinned pieces
+    checkers: Bitboard = 0,
+    pinned: Bitboard = 0,
+
     // Zobrist Hash
     zobrist: u64 = 0,
 
@@ -303,6 +307,8 @@ pub const Position = struct {
         const them_bb = self.bb_colors[color.invert().index()];
         const all_bb = us_bb | them_bb;
 
+        const our_king: Square = @enumFromInt(types.lsb(us_bb & self.bb_pieces[PieceType.king.index()]));
+
         var attacked: Bitboard = 0;
         for (std.enums.values(PieceType)) |pt| {
             if (pt == PieceType.none)
@@ -314,8 +320,29 @@ pub const Position = struct {
             }
         }
 
-        // We first have to compute if is in check or double check
-        // We then have to compute check blockers
+        // Compute checkers from non blockables piece types
+        // All knights can attack the king the same way a knight would attack form the king's square
+        self.checkers = tables.getAttacks(PieceType.knight, color.invert(), our_king, 0) & them_bb & self.bb_pieces[PieceType.knight.index()];
+        // Same method for pawn, transform the king into a pawn
+        self.checkers |= tables.pawn_attacks[color.index()][our_king.index()] & them_bb & self.bb_pieces[PieceType.pawn.index()];
+
+        // Compute candidate checkers from sliders and pinned pieces, transform the king into a slider
+        var candidates: types.Bitboard = tables.getAttacks(types.PieceType.bishop, Color.white, our_king, them_bb) & self.bb_pieces[PieceType.bishop.index()] & self.bb_pieces[PieceType.queen.index()];
+        candidates |= tables.getAttacks(types.PieceType.rook, Color.white, our_king, them_bb) & self.bb_pieces[PieceType.rook.index()] & self.bb_pieces[PieceType.queen.index()];
+
+        self.pinned = 0;
+        while (candidates != 0) {
+            const sq = types.popLsb(&candidates);
+            const bb_between = tables.squares_between[our_king.index()][sq.index()] & us_bb;
+
+            if (bb_between == 0) {
+                // No our piece between king and slider: check
+                self.checkers ^= sq.sqToBB();
+            } else if ((bb_between & (bb_between - 1)) == 0) {
+                // Only one of our piece between king and slider: pinned
+                self.pinned ^= bb_between;
+            }
+        }
 
         for (std.enums.values(PieceType)) |pt| {
             if (pt == PieceType.none)

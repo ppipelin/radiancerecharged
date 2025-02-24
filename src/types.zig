@@ -168,6 +168,14 @@ pub const PieceType = enum(u3) {
     pub inline fn isSliding(self: PieceType) bool {
         return self == PieceType.bishop or self == PieceType.rook or self == PieceType.queen;
     }
+
+    pub inline fn isSlidingDiag(self: PieceType) bool {
+        return self == PieceType.bishop or self == PieceType.queen;
+    }
+
+    pub inline fn isSlidingOrth(self: PieceType) bool {
+        return self == PieceType.rook or self == PieceType.queen;
+    }
 };
 
 pub const Piece = enum(u8) {
