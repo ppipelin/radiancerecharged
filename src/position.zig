@@ -303,6 +303,17 @@ pub const Position = struct {
         const them_bb = self.bb_colors[color.invert().index()];
         const all_bb = us_bb | them_bb;
 
+        var attacked: Bitboard = 0;
+        for (std.enums.values(PieceType)) |pt| {
+            if (pt == PieceType.none)
+                continue;
+            var from_bb: Bitboard = self.bb_pieces[pt.index()] & them_bb;
+            while (from_bb != 0) {
+                const from: Square = types.popLsb(&from_bb);
+                attacked |= tables.getAttacks(pt, color.invert(), from, all_bb) & ~them_bb;
+            }
+        }
+
         // We first have to compute if is in check or double check
         // We then have to compute check blockers
 
@@ -313,7 +324,11 @@ pub const Position = struct {
             var from_bb: Bitboard = self.bb_pieces[pt.index()] & us_bb;
             while (from_bb != 0) {
                 const from: Square = types.popLsb(&from_bb);
-                const to: Bitboard = tables.getAttacks(pt, color, from, all_bb) & ~us_bb;
+                var to: Bitboard = tables.getAttacks(pt, color, from, all_bb) & ~us_bb;
+
+                if (pt == types.PieceType.king) {
+                    to &= ~attacked;
+                }
 
                 // Capture
                 Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
