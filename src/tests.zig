@@ -96,6 +96,22 @@ test "MovegenSliders" {
     try expect(list.items.len == 86);
 }
 
+test "MovegenKing" {
+    var s: position.State = position.State{};
+    var pos = position.Position.setFen(&s, "3qkr2/8/8/8/8/8/8/4K3 w - - 0 1");
+    var alloc = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = alloc.allocator();
+    tables.initAll(allocator);
+    defer tables.deinitAll();
+
+    var list = std.ArrayList(types.Move).init(allocator);
+    defer list.deinit();
+
+    pos.generateLegalMoves(pos.state.turn, &list);
+
+    try expect(list.items.len == 1);
+}
+
 test "PerftKiwipete" {
     var s: position.State = position.State{};
     var pos = position.Position.setFen(&s, position.kiwipete);
