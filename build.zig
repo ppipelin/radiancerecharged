@@ -52,19 +52,28 @@ pub fn build(b: *std.Build) void {
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
-    const exe_unit_tests = b.addTest(.{
+    const exe_tests = b.addTest(.{
         .root_source_file = b.path("src/tests.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+    const exe_tests_movegen = b.addTest(.{
+        .root_source_file = b.path("src/testsMovegen.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
-    run_exe_unit_tests.has_side_effects = true;
+    const run_exe_tests = b.addRunArtifact(exe_tests);
+    const run_exe_tests_movegen = b.addRunArtifact(exe_tests_movegen);
+
+    run_exe_tests.has_side_effects = true;
+    run_exe_tests_movegen.has_side_effects = true;
 
     // Similar to creating the run step earlier, this exposes a `test` step to
     // the `zig build --help` menu, providing a way for the user to request
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_exe_tests_movegen.step);
 }
