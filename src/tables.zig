@@ -10,6 +10,7 @@ pub var moves_rook: [types.board_size2]std.AutoHashMap(Bitboard, Bitboard) = und
 pub var moves_bishop: [types.board_size2]std.AutoHashMap(Bitboard, Bitboard) = undefined;
 pub var pseudo_legal_attacks: [types.PieceType.nb()][types.board_size2]Bitboard = std.mem.zeroes([types.PieceType.nb()][types.board_size2]Bitboard);
 pub var pawn_attacks: [types.Color.nb()][types.board_size2]Bitboard = std.mem.zeroes([types.Color.nb()][types.board_size2]Bitboard);
+pub var squares_between: [types.board_size2][types.board_size2]types.Bitboard = std.mem.zeroes([types.board_size2][types.board_size2]types.Bitboard);
 
 pub inline fn filterMovesBishop(sq: types.Square) Bitboard {
     var b: Bitboard = 0;
@@ -108,7 +109,7 @@ inline fn getRookAttacks(sq: types.Square, blockers: types.Bitboard) types.Bitbo
     return slidingBB(sq, blockers, types.mask_file[sq.file().index()]) | slidingBB(sq, blockers, types.mask_rank[sq.rank().index()]);
 }
 
-pub fn initSlidersAttacks(alloc: std.mem.Allocator) void {
+fn initSlidersAttacks(alloc: std.mem.Allocator) void {
     // Compute moveable squares
     var sq: types.Square = types.Square.a1;
     while (sq != types.Square.none) : (sq = sq.inc().*) {
@@ -145,7 +146,26 @@ pub fn initSlidersAttacks(alloc: std.mem.Allocator) void {
     }
 }
 
-pub fn initNonBlockable() void {
+fn initSquaresBetween() void {
+    var sq1: types.Square = types.Square.a1;
+
+    while (sq1 != types.Square.none) : (sq1 = sq1.inc().*) {
+        var sq2: types.Square = types.Square.a1;
+
+        while (sq2 != types.Square.none) : (sq2 = sq2.inc().*) {
+            const sqs: Bitboard = sq1.sqToBB() | sq2.sqToBB();
+            if (sq1.diagonal() == sq2.diagonal() or sq1.antiDiagonal() == sq2.antiDiagonal()) {
+                squares_between[sq1.index()][sq2.index()] = getBishopAttacks(sq1, sqs) & getBishopAttacks(sq2, sqs);
+            } else if (sq1.file() == sq2.file() or sq1.rank() == sq2.rank()) {
+                squares_between[sq1.index()][sq2.index()] = getRookAttacks(sq1, sqs) & getRookAttacks(sq2, sqs);
+            } else {
+                squares_between[sq1.index()][sq2.index()] = 0;
+            }
+        }
+    }
+}
+
+fn initNonBlockable() void {
     std.mem.copyForwards(Bitboard, pawn_attacks[Color.black.index()][0..types.board_size2], black_pawn_attacks[0..types.board_size2]);
     std.mem.copyForwards(Bitboard, pawn_attacks[Color.white.index()][0..types.board_size2], white_pawn_attacks[0..types.board_size2]);
     std.mem.copyForwards(Bitboard, pseudo_legal_attacks[types.PieceType.knight.index()][0..types.board_size2], knight_attacks[0..types.board_size2]);
@@ -161,6 +181,7 @@ pub fn initNonBlockable() void {
 
 pub fn initAll(alloc: std.mem.Allocator) void {
     initSlidersAttacks(alloc);
+    initSquaresBetween();
     initNonBlockable();
 }
 
