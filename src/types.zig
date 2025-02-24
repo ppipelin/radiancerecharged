@@ -109,7 +109,7 @@ pub const Direction = enum(i32) {
         return @intFromEnum(self);
     }
 
-    pub inline fn relative_dir(self: Direction, c: Color) Direction {
+    pub inline fn relativeDir(self: Direction, c: Color) Direction {
         return if (c == Color.white) self else @enumFromInt(-self.index());
     }
 };
@@ -269,12 +269,28 @@ pub const Move = packed struct {
         return (self.flags >> 3) > 0;
     }
 
-    pub fn generateMove(comptime flag: MoveFlags, from: Square, to: Bitboard, list: *std.ArrayList(Move)) void {
+    pub inline fn generateMove(comptime flag: MoveFlags, from: Square, to: Bitboard, list: *std.ArrayList(Move)) void {
         var to_t = to;
         while (to_t != 0) {
             // std.debug.print("from {s} to {d}", .{ from.sqToStr(), lsb(to_t) });
             // Only Square.none is out of u6
             list.append(Move{ .flags = flag.index(), .from = @truncate(from.index()), .to = @truncate(popLsb(&to_t).index()) }) catch unreachable;
+        }
+    }
+
+    pub inline fn generateMoveFrom(comptime flag: MoveFlags, from_: Bitboard, to: Square, list: *std.ArrayList(Move)) void {
+        var from = from_;
+        while (from != 0) {
+            // Only Square.none is out of u6
+            list.append(Move{ .flags = flag.index(), .from = @truncate(popLsb(&from).index()), .to = @truncate(to.index()) }) catch unreachable;
+        }
+    }
+
+    pub inline fn displayMoves(list: std.ArrayList(Move)) void {
+        std.debug.print("Number of moves: {d}\n", .{list.items.len});
+        for (list.items) |item| {
+            item.uciPrint(std.io.getStdErr().writer());
+            std.debug.print("\n", .{});
         }
     }
 
