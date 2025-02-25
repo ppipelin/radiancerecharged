@@ -344,42 +344,58 @@ pub const Position = struct {
             }
         }
 
-        for (std.enums.values(PieceType)) |pt| {
-            if (pt == PieceType.none)
-                continue;
+        switch (types.popcount(self.checkers)) {
+            // Double check, move king
+            2 => {
+                const to: Bitboard = tables.getAttacks(PieceType.king, color, our_king, all_bb) & ~attacked;
+                Move.generateMove(MoveFlags.quiet, our_king, to & ~all_bb, list);
+                Move.generateMove(MoveFlags.capture, our_king, to & them_bb, list);
+            },
+            // SingleCheck
+            1 => {},
+            // No check
+            else => {
+                for (std.enums.values(PieceType)) |pt| {
+                    if (pt == PieceType.none)
+                        continue;
 
-            var from_bb: Bitboard = self.bb_pieces[pt.index()] & us_bb;
-            while (from_bb != 0) {
-                const from: Square = types.popLsb(&from_bb);
-                var to: Bitboard = tables.getAttacks(pt, color, from, all_bb) & ~us_bb;
+                    var from_bb: Bitboard = self.bb_pieces[pt.index()] & us_bb;
+                    while (from_bb != 0) {
+                        const from: Square = types.popLsb(&from_bb);
+                        var to: Bitboard = tables.getAttacks(pt, color, from, all_bb); // Careful: us_bb not excluded
 
-                if (pt == types.PieceType.king) {
-                    to &= ~attacked;
-                }
+                        if (pt == types.PieceType.king) {
+                            to &= ~attacked;
+                        }
 
-                // Capture
-                Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
+                        // Capture
+                        Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
 
-                // Quiet and en passant
-                if (pt == PieceType.pawn) {
-                    // En passant
-                    // Pawn that can take are from the north.relativeDir() of en_passant square
-                    if (self.state.en_passant != Square.none) {
-                        const from_en_passant: Bitboard = tables.pawn_attacks[color.invert().index()][self.state.en_passant.index()];
-                        Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & self.bb_pieces[PieceType.pawn.index()], self.state.en_passant, list);
-                    }
-                    // Push
-                    if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
-                        list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
-                        // Double push
-                        if (from.rank() == Rank.r2.relative_rank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
-                            list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relativeDir(color)).index()) }) catch unreachable;
+                        // Quiet and en passant
+                        if (pt == PieceType.pawn) {
+                            // En passant
+                            // Pawn that can take are from the north.relativeDir() of en_passant square
+                            if (self.state.en_passant != Square.none) {
+                                const from_en_passant: Bitboard = tables.pawn_attacks[color.invert().index()][self.state.en_passant.index()];
+                                Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & self.bb_pieces[PieceType.pawn.index()], self.state.en_passant, list);
+                            }
+                            // Push
+                            if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
+                                list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
+                                // Double push
+                                if (from.rank() == Rank.r2.relative_rank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
+                                    list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relativeDir(color)).index()) }) catch unreachable;
+                                }
+                            }
+                        } else {
+                            Move.generateMove(MoveFlags.quiet, from, to & ~all_bb, list);
                         }
                     }
-                } else {
-                    Move.generateMove(MoveFlags.quiet, from, to & ~all_bb, list);
                 }
-            }
+                // Castling
+                // Simplified code flow since we know our_king
+
+            },
         }
     }
 
