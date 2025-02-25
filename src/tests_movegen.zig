@@ -73,7 +73,7 @@ test "MovegenSliders" {
 
 test "MovegenKing" {
     var s: position.State = position.State{};
-    var pos = position.Position.setFen(&s, "3qkr2/8/8/8/8/8/8/4K3 w - - 0 1");
+    var pos: position.Position = position.Position.setFen(&s, "3qkr2/8/8/8/8/8/8/4K3 w - - 0 1");
     var alloc = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = alloc.allocator();
     tables.initAll(allocator);
@@ -85,4 +85,11 @@ test "MovegenKing" {
     pos.generateLegalMoves(pos.state.turn, &list);
 
     try expect(list.items.len == 1);
+
+    list.clearAndFree();
+
+    pos = position.Position.setFen(&s, "3qk3/8/8/8/8/8/8/R3K2R w KQ - 0 1");
+    pos.generateLegalMoves(pos.state.turn, &list);
+
+    try expect(list.items.len == 23);
 }
