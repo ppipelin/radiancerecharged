@@ -61,13 +61,13 @@ test "PerftKiwipete" {
 
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    pos.debugPrint();
-    std.debug.print("{}\n", .{list.items.len});
+    // pos.debugPrint();
+    // std.debug.print("{}\n", .{list.items.len});
 
-    for (list.items) |item| {
-        item.uciPrint(std.io.getStdErr().writer());
-        std.debug.print("\n", .{});
-    }
+    // for (list.items) |item| {
+    //     item.uciPrint(std.io.getStdErr().writer());
+    //     std.debug.print("\n", .{});
+    // }
 
     try expect(list.items.len == 48);
 }

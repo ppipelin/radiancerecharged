@@ -154,6 +154,8 @@ fn initSquaresBetween() void {
 
         while (sq2 != types.Square.none) : (sq2 = sq2.inc().*) {
             const sqs: Bitboard = sq1.sqToBB() | sq2.sqToBB();
+            if (sq1 == sq2)
+                continue;
             if (sq1.diagonal() == sq2.diagonal() or sq1.antiDiagonal() == sq2.antiDiagonal()) {
                 squares_between[sq1.index()][sq2.index()] = getBishopAttacks(sq1, sqs) & getBishopAttacks(sq2, sqs);
             } else if (sq1.file() == sq2.file() or sq1.rank() == sq2.rank()) {

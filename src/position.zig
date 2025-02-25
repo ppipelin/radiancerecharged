@@ -41,11 +41,15 @@ const CastleInfo = enum(u4) {
     pub inline fn indexLsb(self: CastleInfo) u4 {
         return types.lsb(@intFromEnum(self));
     }
+
+    pub inline fn relativeCastle(self: CastleInfo, c: Color) CastleInfo {
+        return if (c == Color.white) self else @enumFromInt(self.index() >> 2);
+    }
 };
 
 pub const State = packed struct {
     turn: Color = Color.white,
-    castle_info: CastleInfo = CastleInfo.KQkq,
+    castle_info: CastleInfo = CastleInfo.none,
     repetition: i7 = 0, // Zero if no repetition, x positive if happened once x half moves ago, negative indicates repetition
     rule_fifty: u6 = 0,
     game_ply: u32 = 0,
@@ -66,6 +70,9 @@ pub const Position = struct {
     // Stores the enemy pieces that are attacking the king and pinned pieces
     checkers: Bitboard = 0,
     pinned: Bitboard = 0,
+
+    // Rook initial positions are recorded for 960
+    rook_initial: [2]Square = [_]Square{ Square.a1, Square.h1 },
 
     // Zobrist Hash
     zobrist: u64 = 0,
@@ -383,7 +390,7 @@ pub const Position = struct {
                             if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
                                 list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
                                 // Double push
-                                if (from.rank() == Rank.r2.relative_rank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
+                                if (from.rank() == Rank.r2.relativeRank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
                                     list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relativeDir(color)).index()) }) catch unreachable;
                                 }
                             }
@@ -393,8 +400,24 @@ pub const Position = struct {
                     }
                 }
                 // Castling
+                // TODO ADD CASTLING TEST FOR 960
                 // Simplified code flow since we know our_king
-
+                // OO
+                if ((self.state.castle_info.index() & CastleInfo.K.relativeCastle(color).index()) > 0) {
+                    const to_king_oo: Square = Square.g1.relativeSquare(color);
+                    const path_oo: Bitboard = tables.squares_between[our_king.index()][to_king_oo.index()] | to_king_oo.sqToBB();
+                    if ((path_oo & (all_bb & ~self.rook_initial[1].sqToBB() & ~our_king.sqToBB()) == 0) and (path_oo & attacked) == 0) {
+                        list.append(Move{ .flags = MoveFlags.oo.index(), .from = @truncate(our_king.index()), .to = @truncate(to_king_oo.index()) }) catch unreachable;
+                    }
+                }
+                // OOO
+                if ((self.state.castle_info.index() & CastleInfo.Q.relativeCastle(color).index()) > 0) {
+                    const to_king_ooo: Square = Square.c1.relativeSquare(color);
+                    const path_ooo: Bitboard = tables.squares_between[our_king.index()][to_king_ooo.index()] | to_king_ooo.sqToBB();
+                    if ((path_ooo & (all_bb & ~self.rook_initial[0].sqToBB() & ~our_king.sqToBB()) == 0) and (path_ooo & attacked) == 0) {
+                        list.append(Move{ .flags = MoveFlags.oo.index(), .from = @truncate(our_king.index()), .to = @truncate(to_king_ooo.index()) }) catch unreachable;
+                    }
+                }
             },
         }
     }
@@ -459,14 +482,18 @@ pub const Position = struct {
         try fen.append(' ');
         try fen.append(if (self.state.turn == Color.white) 'w' else 'b');
         try fen.append(' ');
-        if ((self.state.castle_info.index() | CastleInfo.K.index()) > 0)
-            try fen.append('K');
-        if ((self.state.castle_info.index() | CastleInfo.Q.index()) > 0)
-            try fen.append('Q');
-        if ((self.state.castle_info.index() | CastleInfo.k.index()) > 0)
-            try fen.append('k');
-        if ((self.state.castle_info.index() | CastleInfo.q.index()) > 0)
-            try fen.append('q');
+        if (self.state.castle_info == CastleInfo.none) {
+            try fen.append('-');
+        } else {
+            if ((self.state.castle_info.index() & CastleInfo.K.index()) > 0)
+                try fen.append('K');
+            if ((self.state.castle_info.index() & CastleInfo.Q.index()) > 0)
+                try fen.append('Q');
+            if ((self.state.castle_info.index() & CastleInfo.k.index()) > 0)
+                try fen.append('k');
+            if ((self.state.castle_info.index() & CastleInfo.q.index()) > 0)
+                try fen.append('q');
+        }
 
         try fen.append(' ');
         if (self.state.en_passant == Square.none) {
@@ -483,19 +510,26 @@ pub const Position = struct {
         return fen.items;
     }
 
+    // Maybe sq should be a square and use sq.add()
     pub fn setFen(state: *State, fen: []const u8) Position {
         state.* = State{};
         var pos: Position = Position.new(state);
         var sq: i32 = Square.a8.index();
         var tokens = std.mem.tokenizeScalar(u8, fen, ' ');
         const bd = tokens.next().?;
+        var rook_cnt: u8 = 0;
         for (bd) |ch| {
             if (std.ascii.isDigit(ch)) {
                 sq += @as(i32, ch - '0') * Direction.east.index();
             } else if (ch == '/') {
                 sq += Direction.south.index() * 2;
             } else {
-                pos.add(Piece.first_index(ch).?, @enumFromInt(sq));
+                const p: Piece = Piece.first_index(ch).?;
+                pos.add(p, @enumFromInt(sq));
+                if (ch == 'R' and rook_cnt < 2) {
+                    pos.rook_initial[rook_cnt] = @enumFromInt(sq);
+                    rook_cnt += 1;
+                }
                 sq += 1;
             }
         }

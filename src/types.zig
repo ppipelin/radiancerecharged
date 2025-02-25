@@ -67,6 +67,15 @@ pub const Square = enum(u8) {
         return @intFromEnum(self);
     }
 
+    pub inline fn relativeSquare(self: Square, c: Color) Square {
+        std.debug.assert(self != Square.none);
+        if (c == Color.white) {
+            return self;
+        } else {
+            return @enumFromInt(@as(u8, self.rank().relativeRank(c).index()) * board_size + @as(u8, self.file().index()));
+        }
+    }
+
     pub inline fn sqToBB(self: Square) Bitboard {
         const sq: u6 = @truncate(@intFromEnum(self));
         return intToBB(sq);
@@ -143,7 +152,7 @@ pub const Rank = enum(u3) {
         return @intFromEnum(self);
     }
 
-    pub inline fn relative_rank(self: Rank, c: Color) Rank {
+    pub inline fn relativeRank(self: Rank, c: Color) Rank {
         return if (c == Color.white) self else @enumFromInt(Rank.r8.index() - self.index());
     }
 };
