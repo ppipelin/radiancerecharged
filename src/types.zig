@@ -275,7 +275,7 @@ pub const Move = packed struct {
     }
 
     pub inline fn isCapture(self: Move) bool {
-        return (self.flags == 8) or (self.flags == 10) or (self.flags >= 12 and self.flags <= 15);
+        return (self.flags == 4) or (self.flags == 5) or (self.flags >= 12 and self.flags <= 15);
     }
 
     pub inline fn isEnPassant(self: Move) bool {
@@ -319,11 +319,11 @@ pub const Move = packed struct {
         writer.print("{s}{s}", .{
             self.getFrom().sqToStr(),
             self.getTo().sqToStr(),
-        }) catch {};
+        }) catch unreachable;
         if (self.isPromotion()) {
             writer.print("{c}", .{
                 prom_move_type_string[self.flags][0],
-            }) catch {};
+            }) catch unreachable;
         }
     }
 };
@@ -382,7 +382,7 @@ pub const diagonal_clockwise: Bitboard = 0b1000000001000000001000000001000000001
 pub const diagonal_counter_clockwise: Bitboard = 0b0000000100000010000001000000100000010000001000000100000010000000;
 
 pub const mask_file = [_]Bitboard{ file, file << 1, file << 2, file << 3, file << 4, file << 5, file << 6, file << 7 };
-pub const mask_rank = [_]Bitboard{ rank, rank << board_size * 1, rank << board_size * 2, rank << board_size * 3, rank << board_size * 4, rank << board_size * 5, rank << board_size * 7, rank << board_size * 5 };
+pub const mask_rank = [_]Bitboard{ rank, rank << board_size * 1, rank << board_size * 2, rank << board_size * 3, rank << board_size * 4, rank << board_size * 5, rank << board_size * 6, rank << board_size * 7 };
 
 // pub const mask_diagonal = [_]Bitboard{
 //     diagonal_clockwise >> 7,  diagonal_clockwise >> 6,  diagonal_clockwise >> 5,  diagonal_clockwise >> 4,  diagonal_clockwise >> 3,  diagonal_clockwise >> 2,  diagonal_clockwise >> 1,

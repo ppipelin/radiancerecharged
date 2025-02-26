@@ -52,7 +52,7 @@ pub const State = packed struct {
     castle_info: CastleInfo = CastleInfo.none,
     repetition: i7 = 0, // Zero if no repetition, x positive if happened once x half moves ago, negative indicates repetition
     rule_fifty: u6 = 0,
-    game_ply: u32 = 0,
+    game_ply: u32 = 1,
     en_passant: Square = Square.none,
     last_captured_piece: Piece = Piece.none,
     material_key: u64 = 0,
@@ -116,12 +116,13 @@ pub const Position = struct {
         // update zobrist
     }
 
-    pub inline fn movePiece(self: *Position, move: Move, state: *State) !void {
+    pub fn movePiece(self: *Position, move: Move, state: *State) !void {
         // Reset data and set as previous
+        state.turn = self.state.turn;
         state.castle_info = self.state.castle_info;
         // Increment ply counters. In particular, rule_fifty will be reset to zero later on in case of a capture or a pawn move.
         state.rule_fifty = self.state.rule_fifty + 1;
-        state.game_ply = self.state.game_ply + 1;
+        state.game_ply = self.state.game_ply;
         state.en_passant = Square.none;
         state.last_captured_piece = Piece.none;
         state.material_key = self.state.material_key;
@@ -166,13 +167,13 @@ pub const Position = struct {
             PieceType.rook => {
                 const is_white = from_piece.pieceToColor() == Color.white;
                 if (move.getFrom().file() == File.fh) {
-                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.K else CastleInfo.k) > 0) {
-                        self.state.castle_info &= ~(if (is_white) CastleInfo.K.index() else CastleInfo.k.index());
+                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.K else CastleInfo.k).index() > 0) {
+                        self.state.castle_info = @enumFromInt(self.state.castle_info.index() & ~(if (is_white) CastleInfo.K.index() else CastleInfo.k.index()));
                         // self.state.material_key ^= ~Zobrist.caslting[if (is_white) CastleInfo.K else CastleInfo.k) > 0];
                     }
                 } else if (move.getFrom().file() == File.fa) {
-                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.Q else CastleInfo.q) > 0) {
-                        self.state.castle_info &= ~(if (is_white) CastleInfo.Q.index() else CastleInfo.q.index());
+                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.Q else CastleInfo.q).index() > 0) {
+                        self.state.castle_info = @enumFromInt(self.state.castle_info.index() & ~(if (is_white) CastleInfo.Q.index() else CastleInfo.q.index()));
                         // self.state.material_key ^= ~Zobrist.caslting[if (is_white) CastleInfo.Q else CastleInfo.q) > 0];
                     }
                 }
@@ -184,14 +185,14 @@ pub const Position = struct {
                         self.state.en_passant = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
                     },
                     MoveFlags.en_passant => {
-                        const en_passant_sq = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
-                        self.state.last_captured_piece = self.board[en_passant_sq];
+                        const en_passant_sq: Square = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
+                        self.state.last_captured_piece = self.board[en_passant_sq.index()];
 
                         // Remove
                         self.remove(self.state.last_captured_piece, en_passant_sq);
-                        // self.state.material_key ^= Zobrist.psq[self.state.last_captured_piece.pieceToPieceType()][en_passant_sq];
+                        // self.state.material_key ^= Zobrist.psq[self.state.last_captured_piece.pieceToPieceType()][en_passant_sq.index()];
 
-                        self.board[en_passant_sq] = Piece.none;
+                        self.board[en_passant_sq.index()] = Piece.none;
                     },
                     else => {},
                 }
@@ -202,17 +203,21 @@ pub const Position = struct {
         }
 
         if (move.isCapture()) {
-            if (to_piece == PieceType.none) {
+            if (to_piece == Piece.none) {
                 return error.CaptureNone;
             } else {
                 // This should be the quickest to disable castle when rook is taken
-                const castleRemove: CastleInfo = switch (to) {
-                    0 => CastleInfo.K,
-                    types.board_size - 1 => CastleInfo.Q,
-                    types.board_size2 - types.board_size => CastleInfo.k,
-                    types.board_size2 - 1 => CastleInfo.q,
-                    else => CastleInfo.none,
-                };
+                var castleRemove: CastleInfo = CastleInfo.none;
+
+                if (to == self.rook_initial[0]) {
+                    castleRemove = CastleInfo.K;
+                } else if (to == self.rook_initial[1]) {
+                    castleRemove = CastleInfo.Q;
+                } else if (to == self.rook_initial[0].relativeSquare(Color.black)) {
+                    castleRemove = CastleInfo.k;
+                } else if (to == self.rook_initial[1].relativeSquare(Color.black)) {
+                    castleRemove = CastleInfo.q;
+                }
 
                 if (CastleInfo.none != CastleInfo.none and (self.state.castle_info.index() | castleRemove.index())) {
                     self.state.castle_info &= ~castleRemove;
@@ -222,7 +227,7 @@ pub const Position = struct {
                 self.state.last_captured_piece = to_piece;
 
                 // Remove captured
-                self.remove(to_piece, move.to);
+                self.remove(to_piece, move.getTo());
 
                 // Reset rule 50 counter
                 self.state.rule_fifty = 0;
@@ -240,17 +245,21 @@ pub const Position = struct {
         switch (move.getFlags()) {
             MoveFlags.oo => {
                 var tmp: State = State{};
-                state = self.state;
-                self.movePiece(Move{ .flags = 0, .from = from + 3, .to = from + 3 - 2 }, &tmp); // CHESS 960 BUG
+                // CHESS 960 BUG
+                if (self.movePiece(Move{ .flags = 0, .from = @truncate(from.index() + 3), .to = @truncate(from.index() + 3 - 2) }, &tmp)) {} else |err| {
+                    return err;
+                }
                 // We have moved, we need to set the turn back
-                self.state = &state;
+                self.state = state;
             },
             MoveFlags.ooo => {
                 var tmp: State = State{};
-                state = self.state;
-                self.movePiece(Move{ .flags = 0, .from = from - 4, .to = from - 4 + 3 }, &tmp); // CHESS 960 BUG
+                // CHESS 960 BUG
+                if (self.movePiece(Move{ .flags = 0, .from = @truncate(from.index() - 4), .to = @truncate(from.index() - 4 + 3) }, &tmp)) {} else |err| {
+                    return err;
+                }
                 // We have moved, we need to set the turn back
-                self.state = &state;
+                self.state = state;
             },
             else => {},
         }
@@ -270,7 +279,7 @@ pub const Position = struct {
     }
 
     /// silent will not change self.state
-    pub inline fn unMovePiece(self: *Position, move: Move, silent: bool) !void {
+    pub fn unMovePiece(self: *Position, move: Move, silent: bool) !void {
         const from: Square = move.getFrom();
         const to: Square = move.getTo();
         const to_piece: Piece = self.board[to.index()];
@@ -282,18 +291,18 @@ pub const Position = struct {
             // Was a promotion
             if (move.isPromotion()) {
                 // Before delete we store the data we need
-                const is_white: Color = to_piece.pieceToColor();
+                const is_white: bool = to_piece.pieceToColor() == Color.white;
                 // Remove promoted piece back into pawn (already moved back)
                 self.remove(to_piece, from);
                 self.add(if (is_white) Piece.w_pawn else Piece.b_pawn, from);
-                to_piece = self.board[from]; // update, may not be needed if we don't need later
+                // to_piece = self.board[from.index()]; // update, may not be needed if we don't need later
             }
 
             if (self.state.last_captured_piece != Piece.none) {
-                const local_to: Square = to;
+                var local_to: Square = to;
                 // Case where capture was en passant
                 if (move.isEnPassant())
-                    local_to = if (self.state.last_captured_piece.pieceToColor() == Color.white) to + 8 else to - 8;
+                    local_to = if (self.state.last_captured_piece.pieceToColor() == Color.white) to.add(Direction.north) else to.add(Direction.south);
 
                 self.add(self.state.last_captured_piece, local_to);
             }
@@ -303,9 +312,13 @@ pub const Position = struct {
 
         // If castling we move the rook as well
         if (move.getFlags() == MoveFlags.oo) {
-            unMovePiece(Move{ .from = from + 3, .to = from + 3 - 2 }, true);
+            if (self.unMovePiece(Move{ .from = @truncate(from.index() + 3), .to = @truncate(from.index() + 3 - 2) }, true)) {} else |err| {
+                return err;
+            }
         } else if (move.getFlags() == MoveFlags.ooo) {
-            unMovePiece(Move{ .from = from - 4, .to = from - 4 + 3 }, true);
+            if (self.unMovePiece(Move{ .from = @truncate(from.index() - 4), .to = @truncate(from.index() - 4 + 3) }, true)) {} else |err| {
+                return err;
+            }
         }
     }
 
@@ -504,8 +517,13 @@ pub const Position = struct {
 
         try fen.append(' ');
         var buffer: [4]u8 = undefined;
-        const buf = buffer[0..];
+        var buf = buffer[0..];
         try fen.appendSlice(std.fmt.bufPrintIntToSlice(buf, self.state.rule_fifty, 10, .lower, std.fmt.FormatOptions{}));
+
+        try fen.append(' ');
+        buffer = undefined;
+        buf = buffer[0..];
+        try fen.appendSlice(std.fmt.bufPrintIntToSlice(buf, self.state.game_ply, 10, .lower, std.fmt.FormatOptions{}));
 
         return fen.items;
     }

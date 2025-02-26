@@ -1,5 +1,6 @@
 const position = @import("position.zig");
 const std = @import("std");
+const search = @import("search.zig");
 const tables = @import("tables.zig");
 const types = @import("types.zig");
 
@@ -7,9 +8,7 @@ pub fn main() !void {
     // stdout is for the actual output of your application, for example if you
     // are implementing gzip, then only the compressed bytes should be sent to
     // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    const stdout = std.io.getStdOut().writer();
 
     var state: position.State = position.State{};
     var pos = position.Position.setFen(&state, position.start_fen);
@@ -25,15 +24,22 @@ pub fn main() !void {
     var list = std.ArrayList(types.Move).init(std.heap.page_allocator);
     defer list.deinit();
 
-    pos.generateLegalMoves(pos.state.turn, &list);
+    // pos.state.turn = pos.state.turn.invert();
+    // std.debug.print("Perft 1: {}\n\n", .{try search.perft(std.heap.page_allocator, &pos, 1, false)});
 
-    std.debug.print("nb of moves: {d}\n", .{list.items.len});
-    for (list.items) |item| {
-        item.uciPrint(stdout);
-        try stdout.print("\n", .{});
-    }
+    var t = try std.time.Timer.start();
+
+    // std.debug.print("Perft 1: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 1, false)});
+    // std.debug.print("Perft 2: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 2, true)});
+    // std.debug.print("Perft 3: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 3, true)});
+    std.debug.print("Perft 4: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 4, false)});
+    // std.debug.print("Perft 5: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 5, false)});
+    // std.debug.print("Perft 6: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 6, false)});
+
+    // pos.generateLegalMoves(pos.state.turn, &list);
+    // types.Move.displayMoves(list);
+
+    std.debug.print("Time: {}\n", .{std.fmt.fmtDuration(t.read())});
 
     try stdout.print("Run `zig build test` to run the tests.\n", .{});
-
-    try bw.flush(); // don't forget to flush!
 }
