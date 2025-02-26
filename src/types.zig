@@ -55,12 +55,12 @@ pub const Square = enum(u8) {
         return @enumFromInt(@intFromEnum(self) & 0b111);
     }
 
-    pub inline fn diagonal(self: Square) i32 {
-        return 7 + @as(i32, self.rank().index()) - @as(i32, self.file().index());
+    pub inline fn diagonal(self: Square) u4 {
+        return 7 + @as(u4, self.rank().index()) - @as(u4, self.file().index());
     }
 
-    pub inline fn antiDiagonal(self: Square) i32 {
-        return @as(i32, self.rank().index()) + @as(i32, self.file().index());
+    pub inline fn antiDiagonal(self: Square) u4 {
+        return @as(u4, self.rank().index()) + @as(u4, self.file().index());
     }
 
     pub inline fn index(self: Square) u8 {

@@ -347,8 +347,8 @@ pub const Position = struct {
         self.checkers |= tables.pawn_attacks[color.index()][our_king.index()] & them_bb & self.bb_pieces[PieceType.pawn.index()];
 
         // Compute candidate checkers from sliders and pinned pieces, transform the king into a slider
-        var candidates: types.Bitboard = tables.getAttacks(types.PieceType.bishop, Color.white, our_king, them_bb) & self.bb_pieces[PieceType.bishop.index()] & self.bb_pieces[PieceType.queen.index()];
-        candidates |= tables.getAttacks(types.PieceType.rook, Color.white, our_king, them_bb) & self.bb_pieces[PieceType.rook.index()] & self.bb_pieces[PieceType.queen.index()];
+        var candidates: types.Bitboard = tables.getAttacks(types.PieceType.bishop, Color.white, our_king, them_bb) & ((self.bb_pieces[PieceType.bishop.index()] | self.bb_pieces[PieceType.queen.index()]) & self.bb_colors[color.invert().index()]);
+        candidates |= tables.getAttacks(types.PieceType.rook, Color.white, our_king, them_bb) & ((self.bb_pieces[PieceType.rook.index()] | self.bb_pieces[PieceType.queen.index()]) & self.bb_colors[color.invert().index()]);
 
         self.pinned = 0;
         while (candidates != 0) {
@@ -384,6 +384,11 @@ pub const Position = struct {
                         const from: Square = types.popLsb(&from_bb);
                         var to: Bitboard = tables.getAttacks(pt, color, from, all_bb); // Careful: us_bb not excluded
 
+                        // Could be optimized
+                        if ((from.sqToBB() & self.pinned) > 0) {
+                            to &= tables.squares_line[our_king.index()][from.index()];
+                        }
+
                         if (pt == types.PieceType.king) {
                             to &= ~attacked;
                         }
@@ -400,7 +405,9 @@ pub const Position = struct {
                                 Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & self.bb_pieces[PieceType.pawn.index()], self.state.en_passant, list);
                             }
                             // Push
-                            if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
+                            // If a pawn is aligned with the king, he can only be aligned in a certain direction
+                            const pawn_forward: Square = from.add(Direction.north.relativeDir(color));
+                            if (self.board[pawn_forward.index()] == Piece.none and (from.sqToBB() & ~self.pinned > 0 or (tables.squares_line[from.index()][our_king.index()] & pawn_forward.sqToBB()) > 0)) {
                                 list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
                                 // Double push
                                 if (from.rank() == Rank.r2.relativeRank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {

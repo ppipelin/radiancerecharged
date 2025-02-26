@@ -11,6 +11,7 @@ pub var moves_bishop: [types.board_size2]std.AutoHashMap(Bitboard, Bitboard) = u
 pub var pseudo_legal_attacks: [types.PieceType.nb()][types.board_size2]Bitboard = std.mem.zeroes([types.PieceType.nb()][types.board_size2]Bitboard);
 pub var pawn_attacks: [types.Color.nb()][types.board_size2]Bitboard = std.mem.zeroes([types.Color.nb()][types.board_size2]Bitboard);
 pub var squares_between: [types.board_size2][types.board_size2]types.Bitboard = std.mem.zeroes([types.board_size2][types.board_size2]types.Bitboard);
+pub var squares_line: [types.board_size2][types.board_size2]types.Bitboard = std.mem.zeroes([types.board_size2][types.board_size2]types.Bitboard);
 
 pub inline fn filterMovesBishop(sq: types.Square) Bitboard {
     var b: Bitboard = 0;
@@ -146,6 +147,29 @@ fn initSlidersAttacks(alloc: std.mem.Allocator) void {
     }
 }
 
+fn initLine() void {
+    var sq1: types.Square = types.Square.a1;
+
+    while (sq1 != types.Square.none) : (sq1 = sq1.inc().*) {
+        var sq2: types.Square = types.Square.a1;
+
+        while (sq2 != types.Square.none) : (sq2 = sq2.inc().*) {
+            if (sq1 == sq2)
+                continue;
+
+            if (sq1.file() == sq2.file()) {
+                squares_line[sq1.index()][sq2.index()] = types.mask_file[sq1.file().index()];
+            } else if (sq1.rank() == sq2.rank()) {
+                squares_line[sq1.index()][sq2.index()] = types.mask_rank[sq1.rank().index()];
+            } else if (sq1.diagonal() == sq2.diagonal()) {
+                squares_line[sq1.index()][sq2.index()] = types.mask_diagonal[sq1.diagonal()];
+            } else if (sq1.antiDiagonal() == sq2.antiDiagonal()) {
+                squares_line[sq1.index()][sq2.index()] = types.mask_anti_diagonal[sq1.antiDiagonal()];
+            }
+        }
+    }
+}
+
 fn initSquaresBetween() void {
     var sq1: types.Square = types.Square.a1;
 
@@ -153,9 +177,9 @@ fn initSquaresBetween() void {
         var sq2: types.Square = types.Square.a1;
 
         while (sq2 != types.Square.none) : (sq2 = sq2.inc().*) {
-            const sqs: Bitboard = sq1.sqToBB() | sq2.sqToBB();
             if (sq1 == sq2)
                 continue;
+            const sqs: Bitboard = sq1.sqToBB() | sq2.sqToBB();
             if (sq1.diagonal() == sq2.diagonal() or sq1.antiDiagonal() == sq2.antiDiagonal()) {
                 squares_between[sq1.index()][sq2.index()] = getBishopAttacks(sq1, sqs) & getBishopAttacks(sq2, sqs);
             } else if (sq1.file() == sq2.file() or sq1.rank() == sq2.rank()) {
@@ -183,6 +207,7 @@ fn initNonBlockable() void {
 
 pub fn initAll(alloc: std.mem.Allocator) void {
     initSlidersAttacks(alloc);
+    initLine();
     initSquaresBetween();
     initNonBlockable();
 }
