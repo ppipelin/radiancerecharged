@@ -452,22 +452,19 @@ pub const Position = struct {
 
         std.debug.print("{s} to move\n", .{if (self.state.turn == Color.white) "White" else "Black"});
 
-        // Size of buffer could be 90 but std.fmt.allocPrint and ArenaAllocator requires more
-        var buffer: [300]u8 = undefined;
+        var buffer: [128]u8 = undefined;
         var alloc = std.heap.FixedBufferAllocator.init(&buffer);
-        var arena = std.heap.ArenaAllocator.init(alloc.allocator());
-        defer arena.deinit();
-        const allocator = arena.allocator();
+        const allocator = alloc.allocator();
 
-        if (self.getFen(allocator)) |fen| {
-            std.debug.print("fen: {s}\n", .{fen});
-        } else |err| {
-            std.debug.print("Error {s} reading fen\n", .{@errorName(err)});
-        }
+        const fen = self.getFen(allocator) catch unreachable;
+        defer fen.deinit();
+
+        std.debug.print("fen: {s}\n", .{fen.items});
+
         std.debug.print("zobrist: {}\n", .{self.zobrist});
     }
 
-    pub fn getFen(self: *const Position, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn getFen(self: *const Position, allocator: std.mem.Allocator) !std.ArrayList(u8) {
         var fen = std.ArrayList(u8).init(allocator);
         var i: i8 = Square.a8.index();
         while (i >= 0) : (i -= 8) {
@@ -525,7 +522,7 @@ pub const Position = struct {
         buf = buffer[0..];
         try fen.appendSlice(std.fmt.bufPrintIntToSlice(buf, self.state.game_ply, 10, .lower, std.fmt.FormatOptions{}));
 
-        return fen.items;
+        return fen;
     }
 
     // Maybe sq should be a square and use sq.add()

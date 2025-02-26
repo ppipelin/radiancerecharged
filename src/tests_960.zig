@@ -7,11 +7,11 @@ const types = @import("types.zig");
 
 const expect = std.testing.expect;
 
+const allocator = std.testing.allocator;
+
 test "Castle" {
     var s: position.State = position.State{};
     var pos = position.Position.setFen(&s, "2k5/8/8/8/8/8/8/R2K2R1 w KQ - 0 1");
-    var alloc = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = alloc.allocator();
     tables.initAll(allocator);
     defer tables.deinitAll();
 
@@ -26,8 +26,6 @@ test "Castle" {
 test "CastleIntersect" {
     var s: position.State = position.State{};
     var pos = position.Position.setFen(&s, "1qk5/8/8/8/8/8/8/R1K1R3 w KQ - 0 1");
-    var alloc = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = alloc.allocator();
     tables.initAll(allocator);
     defer tables.deinitAll();
 
