@@ -61,26 +61,3 @@ test "MoveUnmovePiece" {
 
     try expect(std.mem.eql(u8, position.start_fen, new_fen.items));
 }
-
-test "PerftKiwipete" {
-    var s: position.State = position.State{};
-    var pos = position.Position.setFen(&s, position.kiwipete);
-
-    tables.initAll(allocator);
-    defer tables.deinitAll();
-
-    var list = std.ArrayList(types.Move).init(allocator);
-    defer list.deinit();
-
-    pos.generateLegalMoves(pos.state.turn, &list);
-
-    // pos.debugPrint();
-    // std.debug.print("{}\n", .{list.items.len});
-
-    // for (list.items) |item| {
-    //     item.uciPrint(std.io.getStdErr().writer());
-    //     std.debug.print("\n", .{});
-    // }
-
-    try expect(list.items.len == 48);
-}

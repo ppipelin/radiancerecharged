@@ -1,6 +1,7 @@
 //! This module provides tests for move generation of the program
 
 const position = @import("position.zig");
+const search = @import("search.zig");
 const std = @import("std");
 const tables = @import("tables.zig");
 const types = @import("types.zig");
@@ -8,6 +9,31 @@ const types = @import("types.zig");
 const expect = std.testing.expect;
 
 const allocator = std.testing.allocator;
+
+test "PerftKiwipete" {
+    var s: position.State = position.State{};
+    var pos = position.Position.setFen(&s, position.kiwipete);
+
+    tables.initAll(allocator);
+    defer tables.deinitAll();
+
+    var list = std.ArrayList(types.Move).init(allocator);
+    defer list.deinit();
+
+    // pos.debugPrint();
+    // std.debug.print("{}\n", .{list.items.len});
+
+    // for (list.items) |item| {
+    //     item.uciPrint(std.io.getStdErr().writer());  
+    //     std.debug.print("\n", .{});
+    // }
+
+    try expect(48 == search.perft(std.testing.allocator, &pos, 1, false) catch unreachable);
+    try expect(2039 == search.perft(std.testing.allocator, &pos, 2, false) catch unreachable);
+    try expect(97862 == search.perft(std.testing.allocator, &pos, 3, false) catch unreachable);
+    try expect(4085603 == search.perft(std.testing.allocator, &pos, 4, false) catch unreachable);
+    // try expect(193690690 == search.perft(std.testing.allocator, &pos, 5, false));
+}
 
 test "MovegenEnPassant" {
     var s: position.State = position.State{};
