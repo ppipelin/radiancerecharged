@@ -323,9 +323,9 @@ pub const Position = struct {
     }
 
     pub fn generateLegalMoves(self: *Position, color: types.Color, list: *std.ArrayList(types.Move)) void {
-        const us_bb = self.bb_colors[color.index()];
-        const them_bb = self.bb_colors[color.invert().index()];
-        const all_bb = us_bb | them_bb;
+        const us_bb: Bitboard = self.bb_colors[color.index()];
+        const them_bb: Bitboard = self.bb_colors[color.invert().index()];
+        const all_bb: Bitboard = us_bb | them_bb;
 
         const our_king: Square = @enumFromInt(types.lsb(us_bb & self.bb_pieces[PieceType.king.index()]));
 
@@ -352,8 +352,8 @@ pub const Position = struct {
 
         self.pinned = 0;
         while (candidates != 0) {
-            const sq = types.popLsb(&candidates);
-            const bb_between = tables.squares_between[our_king.index()][sq.index()] & us_bb;
+            const sq: Square = types.popLsb(&candidates);
+            const bb_between: Bitboard = tables.squares_between[our_king.index()][sq.index()] & us_bb;
 
             if (bb_between == 0) {
                 // No our piece between king and slider: check
@@ -380,6 +380,29 @@ pub const Position = struct {
                         continue;
 
                     var from_bb: Bitboard = self.bb_pieces[pt.index()] & us_bb;
+
+                    // Deal with pinned pawns first and remove them
+                    if (pt == PieceType.pawn) {
+                        var pinned_pawns: Bitboard = us_bb & self.bb_pieces[PieceType.pawn.index()] & self.pinned;
+                        from_bb &= ~pinned_pawns;
+                        while (pinned_pawns != 0) {
+                            const from: Square = types.popLsb(&pinned_pawns);
+                            // If a pawn is aligned with the king, he can only be aligned in a certain direction
+                            const pawn_forward: Square = from.add(Direction.north.relativeDir(color));
+                            const line: Bitboard = tables.squares_line[from.index()][our_king.index()];
+                            if (self.board[pawn_forward.index()] == Piece.none and (line & pawn_forward.sqToBB()) > 0) {
+                                list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
+                                // Double push
+                                if (from.rank() == Rank.r2.relativeRank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
+                                    list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relativeDir(color)).index()) }) catch unreachable;
+                                }
+                            } else if (line != 0) {
+                                const to: Bitboard = tables.getAttacks(pt, color, from, all_bb); // Careful: us_bb not excluded
+                                Move.generateMove(MoveFlags.capture, from, to & line & them_bb, list);
+                            }
+                        }
+                    }
+
                     while (from_bb != 0) {
                         const from: Square = types.popLsb(&from_bb);
                         var to: Bitboard = tables.getAttacks(pt, color, from, all_bb); // Careful: us_bb not excluded
@@ -405,9 +428,7 @@ pub const Position = struct {
                                 Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & self.bb_pieces[PieceType.pawn.index()], self.state.en_passant, list);
                             }
                             // Push
-                            // If a pawn is aligned with the king, he can only be aligned in a certain direction
-                            const pawn_forward: Square = from.add(Direction.north.relativeDir(color));
-                            if (self.board[pawn_forward.index()] == Piece.none and (from.sqToBB() & ~self.pinned > 0 or (tables.squares_line[from.index()][our_king.index()] & pawn_forward.sqToBB()) > 0)) {
+                            if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
                                 list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
                                 // Double push
                                 if (from.rank() == Rank.r2.relativeRank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
