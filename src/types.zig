@@ -249,6 +249,10 @@ pub const Color = enum(u1) {
     pub inline fn invert(self: Color) Color {
         return @enumFromInt(@intFromEnum(self) ^ 1);
     }
+
+    pub inline fn isWhite(self: Color) bool {
+        return self == Color.white;
+    }
 };
 
 /// Chess move described like in https://www.chessprogramming.org/Encoding_Moves
