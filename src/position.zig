@@ -202,7 +202,16 @@ pub const Position = struct {
             else => {},
         }
 
-        if (move.isCapture()) {
+        if (move.isEnPassant()) {
+            const to_piece_en_passant: Piece = if (self.state.turn.isWhite()) types.Piece.b_pawn else types.Piece.w_pawn;
+            self.state.last_captured_piece = to_piece_en_passant;
+
+            // Remove captured
+            self.remove(to_piece_en_passant, move.getTo().add(types.Direction.south.relativeDir(self.state.turn)));
+
+            // Reset rule 50 counter
+            self.state.rule_fifty = 0;
+        } else if (move.isCapture()) {
             if (to_piece == Piece.none) {
                 return error.CaptureNone;
             } else {
@@ -399,7 +408,16 @@ pub const Position = struct {
                             } else if (line != 0) {
                                 const to: Bitboard = tables.getAttacks(pt, color, from, all_bb); // Careful: us_bb not excluded
                                 Move.generateMove(MoveFlags.capture, from, to & line & them_bb, list);
+                            } else if (self.state.en_passant != Square.none) {
+                                // todo 3k4/q7/8/1pP5/3K4/8/8/8 w - b6 0 2
                             }
+                        }
+                        // En passant
+                        // Pawn that can take are from the north.relativeDir() of en_passant square
+                        if (self.state.en_passant != Square.none) {
+                            const from_en_passant: Bitboard = tables.pawn_attacks[color.invert().index()][self.state.en_passant.index()];
+                            types.debugPrintBitboard(from_en_passant);
+                            Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & from_bb, self.state.en_passant, list);
                         }
                     }
 
@@ -419,14 +437,8 @@ pub const Position = struct {
                         // Capture
                         Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
 
-                        // Quiet and en passant
+                        // Quiet
                         if (pt == PieceType.pawn) {
-                            // En passant
-                            // Pawn that can take are from the north.relativeDir() of en_passant square
-                            if (self.state.en_passant != Square.none) {
-                                const from_en_passant: Bitboard = tables.pawn_attacks[color.invert().index()][self.state.en_passant.index()];
-                                Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & self.bb_pieces[PieceType.pawn.index()], self.state.en_passant, list);
-                            }
                             // Push
                             if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
                                 list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
