@@ -480,21 +480,18 @@ pub const Position = struct {
 
         std.debug.print("{s} to move\n", .{if (self.state.turn == Color.white) "White" else "Black"});
 
-        var buffer: [128]u8 = undefined;
-        var alloc = std.heap.FixedBufferAllocator.init(&buffer);
-        const allocator = alloc.allocator();
+        var buffer: [90]u8 = undefined;
+        const fen = self.getFen(&buffer);
 
-        const fen = self.getFen(allocator) catch unreachable;
-        defer fen.deinit();
-
-        std.debug.print("fen: {s}\n", .{fen.items});
+        std.debug.print("fen: {s}\n", .{fen});
 
         std.debug.print("zobrist: {}\n", .{self.zobrist});
     }
 
-    pub fn getFen(self: *const Position, allocator: std.mem.Allocator) !std.ArrayList(u8) {
-        var fen = std.ArrayList(u8).init(allocator);
+    pub fn getFen(self: *const Position, fen: []u8) []u8 {
+        std.debug.assert(fen.len >= 90);
         var i: i8 = Square.a8.index();
+        var cnt: usize = 0;
         while (i >= 0) : (i -= 8) {
             var blank_counter: u8 = 0;
             var j: i8 = 0;
@@ -504,53 +501,90 @@ pub const Position = struct {
                     blank_counter += 1;
                 } else {
                     if (blank_counter != 0) {
-                        try fen.append('0' + blank_counter);
+                        fen[cnt] = '0' + blank_counter;
+                        cnt += 1;
                         blank_counter = 0;
                     }
-                    try fen.append(p.index());
+                    fen[cnt] = p.index();
+                    cnt += 1;
                 }
             }
             if (blank_counter != 0) {
-                try fen.append('0' + blank_counter);
+                fen[cnt] = '0' + blank_counter;
+                cnt += 1;
             }
             if (i - 8 >= 0) {
-                try fen.append('/');
+                fen[cnt] = '/';
+                cnt += 1;
             }
         }
-        try fen.append(' ');
-        try fen.append(if (self.state.turn == Color.white) 'w' else 'b');
-        try fen.append(' ');
+        fen[cnt] = ' ';
+        cnt += 1;
+        fen[cnt] = if (self.state.turn == Color.white) 'w' else 'b';
+        cnt += 1;
+        fen[cnt] = ' ';
+        cnt += 1;
         if (self.state.castle_info == CastleInfo.none) {
-            try fen.append('-');
+            fen[cnt] = '-';
+            cnt += 1;
         } else {
-            if ((self.state.castle_info.index() & CastleInfo.K.index()) > 0)
-                try fen.append('K');
-            if ((self.state.castle_info.index() & CastleInfo.Q.index()) > 0)
-                try fen.append('Q');
-            if ((self.state.castle_info.index() & CastleInfo.k.index()) > 0)
-                try fen.append('k');
-            if ((self.state.castle_info.index() & CastleInfo.q.index()) > 0)
-                try fen.append('q');
+            if ((self.state.castle_info.index() & CastleInfo.K.index()) > 0) {
+                fen[cnt] = 'K';
+                cnt += 1;
+            }
+            if ((self.state.castle_info.index() & CastleInfo.Q.index()) > 0) {
+                fen[cnt] = 'Q';
+                cnt += 1;
+            }
+            if ((self.state.castle_info.index() & CastleInfo.k.index()) > 0) {
+                fen[cnt] = 'k';
+                cnt += 1;
+            }
+            if ((self.state.castle_info.index() & CastleInfo.q.index()) > 0) {
+                fen[cnt] = 'q';
+                cnt += 1;
+            }
         }
 
-        try fen.append(' ');
+        fen[cnt] = ' ';
+        cnt += 1;
         if (self.state.en_passant == Square.none) {
-            try fen.append('-');
+            fen[cnt] = '-';
+            cnt += 1;
         } else {
-            try fen.appendSlice(self.state.en_passant.sqToStr());
+            const tmp_str = self.state.en_passant.sqToStr();
+            for (tmp_str) |c| {
+                fen[cnt] = c;
+                cnt += 1;
+            }
         }
 
-        try fen.append(' ');
+        fen[cnt] = ' ';
+        cnt += 1;
         var buffer: [4]u8 = undefined;
         var buf = buffer[0..];
-        try fen.appendSlice(std.fmt.bufPrintIntToSlice(buf, self.state.rule_fifty, 10, .lower, std.fmt.FormatOptions{}));
+        var tmp_str = std.fmt.bufPrintIntToSlice(buf, self.state.rule_fifty, 10, .lower, std.fmt.FormatOptions{});
 
-        try fen.append(' ');
+        // std.mem.copyBackwards(u8, fen[cnt..(cnt + tmp_str.len)], tmp_str);
+        @memcpy(fen[cnt..(cnt + tmp_str.len)], tmp_str);
+        cnt += tmp_str.len;
+
+        fen[cnt] = ' ';
+        cnt += 1;
         buffer = undefined;
         buf = buffer[0..];
-        try fen.appendSlice(std.fmt.bufPrintIntToSlice(buf, self.state.game_ply, 10, .lower, std.fmt.FormatOptions{}));
+        tmp_str = std.fmt.bufPrintIntToSlice(buf, self.state.game_ply, 10, .lower, std.fmt.FormatOptions{});
 
-        return fen;
+        std.mem.copyForwards(u8, fen[cnt..(cnt + tmp_str.len)], tmp_str);
+        @memcpy(fen[cnt..(cnt + tmp_str.len)], tmp_str);
+        cnt += tmp_str.len;
+
+        // for (tmp_str) |c| {
+        //     fen[cnt] = c;
+        //     cnt += 1;
+        // }
+
+        return fen[0..cnt];
     }
 
     // Maybe sq should be a square and use sq.add()
