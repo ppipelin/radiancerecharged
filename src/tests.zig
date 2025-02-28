@@ -6,24 +6,26 @@ const tables = @import("tables.zig");
 const types = @import("types.zig");
 
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
+const expectEqualSlices = std.testing.expectEqualSlices;
 
 const allocator = std.testing.allocator;
 
 test "Position" {
     var s: position.State = position.State{};
     var pos = position.Position.new(&s);
-    try expect(pos.state.material_key == 0);
-    try expect(pos.state.turn == types.Color.white);
-    try expect(pos.state.game_ply == 1);
-    try expect(pos.board[0] == types.Piece.none);
+    try expectEqual(0, pos.state.material_key);
+    try expectEqual(types.Color.white, pos.state.turn);
+    try expectEqual(1, pos.state.game_ply);
+    try expectEqual(types.Piece.none, pos.board[0]);
 
     pos.add(types.Piece.w_knight, types.Square.f3);
-    try expect(pos.board[types.Square.f3.index()] == types.Piece.w_knight);
-    try expect(pos.bb_pieces[types.PieceType.knight.index()] == 0x200000);
+    try expectEqual(types.Piece.w_knight, pos.board[types.Square.f3.index()]);
+    try expectEqual(0x200000, pos.bb_pieces[types.PieceType.knight.index()]);
 
     pos.remove(types.Piece.w_knight, types.Square.f3);
-    try expect(pos.board[types.Square.f3.index()] == types.Piece.none);
-    try expect(pos.bb_pieces[types.PieceType.knight.index()] == 0);
+    try expectEqual(types.Piece.none, pos.board[types.Square.f3.index()]);
+    try expectEqual(0, pos.bb_pieces[types.PieceType.knight.index()]);
 }
 
 test "Fen" {
@@ -31,15 +33,15 @@ test "Fen" {
     const fen = position.start_fen;
     var pos = position.Position.setFen(&s, fen);
 
-    const new_fen = pos.getFen(allocator) catch unreachable;
-    defer new_fen.deinit();
+    var buffer: [90]u8 = undefined;
+    const new_fen = pos.getFen(&buffer);
 
-    try expect(std.mem.eql(u8, fen[0..fen.len], new_fen.items));
+    try std.testing.expectEqualSlices(u8, fen, new_fen);
 }
 
 test "Move" {
-    try expect(@sizeOf(types.Move) == 2);
-    try expect(@bitSizeOf(types.Move) == 16);
+    try expectEqual(2, @sizeOf(types.Move));
+    try expectEqual(16, @bitSizeOf(types.Move));
 }
 
 test "MoveUnmovePiece" {
@@ -56,8 +58,8 @@ test "MoveUnmovePiece" {
 
     try pos.unMovePiece(types.Move{ .from = @truncate(types.Square.a2.index()), .to = @truncate(types.Square.a3.index()) }, false);
 
-    const new_fen = pos.getFen(allocator) catch unreachable;
-    defer new_fen.deinit();
+    var buffer: [90]u8 = undefined;
+    const new_fen = pos.getFen(&buffer);
 
-    try expect(std.mem.eql(u8, position.start_fen, new_fen.items));
+    try std.testing.expectEqualSlices(u8, position.start_fen, new_fen);
 }

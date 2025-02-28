@@ -7,6 +7,8 @@ const tables = @import("tables.zig");
 const types = @import("types.zig");
 
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
+const expectEqualSlices = std.testing.expectEqualSlices;
 
 const allocator = std.testing.allocator;
 
@@ -20,19 +22,11 @@ test "PerftKiwipete" {
     var list = std.ArrayList(types.Move).init(allocator);
     defer list.deinit();
 
-    // pos.debugPrint();
-    // std.debug.print("{}\n", .{list.items.len});
-
-    // for (list.items) |item| {
-    //     item.uciPrint(std.io.getStdErr().writer());  
-    //     std.debug.print("\n", .{});
-    // }
-
-    try expect(48 == search.perft(std.testing.allocator, &pos, 1, false) catch unreachable);
-    try expect(2039 == search.perft(std.testing.allocator, &pos, 2, false) catch unreachable);
-    try expect(97862 == search.perft(std.testing.allocator, &pos, 3, false) catch unreachable);
-    try expect(4085603 == search.perft(std.testing.allocator, &pos, 4, false) catch unreachable);
-    // try expect(193690690 == search.perft(std.testing.allocator, &pos, 5, false));
+    try expectEqual(48, search.perft(std.testing.allocator, &pos, 1, false) catch unreachable);
+    try expectEqual(2039, search.perft(std.testing.allocator, &pos, 2, false) catch unreachable);
+    try expectEqual(97862, search.perft(std.testing.allocator, &pos, 3, false) catch unreachable);
+    try expectEqual(4085603, search.perft(std.testing.allocator, &pos, 4, false) catch unreachable);
+    try expectEqual(193690690, search.perft(std.testing.allocator, &pos, 5, false));
 }
 
 test "MovegenEnPassant" {
@@ -46,7 +40,7 @@ test "MovegenEnPassant" {
 
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    try expect(list.items.len == 7);
+    try expectEqual(7, list.items.len);
 }
 
 test "MovegenBishop" {
@@ -60,7 +54,7 @@ test "MovegenBishop" {
 
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    try expect(list.items.len == 52);
+    try expectEqual(52, list.items.len);
 }
 
 test "MovegenRook" {
@@ -74,7 +68,7 @@ test "MovegenRook" {
 
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    try expect(list.items.len == 84);
+    try expectEqual(84, list.items.len);
 }
 
 test "MovegenSliders" {
@@ -88,7 +82,7 @@ test "MovegenSliders" {
 
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    try expect(list.items.len == 86);
+    try expectEqual(86, list.items.len);
 }
 
 test "MovegenKing" {
@@ -102,12 +96,12 @@ test "MovegenKing" {
 
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    try expect(list.items.len == 1);
+    try expectEqual(1, list.items.len);
 
     list.clearAndFree();
 
     pos = position.Position.setFen(&s, "3qk3/8/8/8/8/8/8/R3K2R w KQ - 0 1");
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    try expect(list.items.len == 23);
+    try expectEqual(23, list.items.len);
 }
