@@ -6,6 +6,8 @@ const tables = @import("tables.zig");
 const types = @import("types.zig");
 
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
+const expectEqualSlices = std.testing.expectEqualSlices;
 
 const allocator = std.testing.allocator;
 
@@ -20,7 +22,7 @@ test "Castle" {
 
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    try expect(list.items.len == 26);
+    try expectEqual(26, list.items.len);
 }
 
 test "CastleIntersect" {
@@ -34,5 +36,5 @@ test "CastleIntersect" {
 
     pos.generateLegalMoves(pos.state.turn, &list);
 
-    try expect(list.items.len == 24);
+    try expectEqual(24, list.items.len);
 }
