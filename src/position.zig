@@ -41,14 +41,18 @@ const CastleInfo = enum(u4) {
     pub inline fn indexLsb(self: CastleInfo) u4 {
         return types.lsb(@intFromEnum(self));
     }
+
+    pub inline fn relativeCastle(self: CastleInfo, c: Color) CastleInfo {
+        return if (c == Color.white) self else @enumFromInt(self.index() >> 2);
+    }
 };
 
 pub const State = packed struct {
     turn: Color = Color.white,
-    castle_info: CastleInfo = CastleInfo.KQkq,
+    castle_info: CastleInfo = CastleInfo.none,
     repetition: i7 = 0, // Zero if no repetition, x positive if happened once x half moves ago, negative indicates repetition
     rule_fifty: u6 = 0,
-    game_ply: u32 = 0,
+    game_ply: u32 = 1,
     en_passant: Square = Square.none,
     last_captured_piece: Piece = Piece.none,
     material_key: u64 = 0,
@@ -62,6 +66,13 @@ pub const Position = struct {
     // Bitboards
     bb_pieces: [PieceType.nb()]Bitboard = undefined,
     bb_colors: [Color.nb()]Bitboard = undefined,
+
+    // Stores the enemy pieces that are attacking the king and pinned pieces
+    checkers: Bitboard = 0,
+    pinned: Bitboard = 0,
+
+    // Rook initial positions are recorded for 960
+    rook_initial: [2]Square = [_]Square{ Square.a1, Square.h1 },
 
     // Zobrist Hash
     zobrist: u64 = 0,
@@ -105,12 +116,13 @@ pub const Position = struct {
         // update zobrist
     }
 
-    pub inline fn movePiece(self: *Position, move: Move, state: *State) !void {
+    pub fn movePiece(self: *Position, move: Move, state: *State) !void {
         // Reset data and set as previous
+        state.turn = self.state.turn;
         state.castle_info = self.state.castle_info;
         // Increment ply counters. In particular, rule_fifty will be reset to zero later on in case of a capture or a pawn move.
         state.rule_fifty = self.state.rule_fifty + 1;
-        state.game_ply = self.state.game_ply + 1;
+        state.game_ply = self.state.game_ply;
         state.en_passant = Square.none;
         state.last_captured_piece = Piece.none;
         state.material_key = self.state.material_key;
@@ -155,13 +167,13 @@ pub const Position = struct {
             PieceType.rook => {
                 const is_white = from_piece.pieceToColor() == Color.white;
                 if (move.getFrom().file() == File.fh) {
-                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.K else CastleInfo.k) > 0) {
-                        self.state.castle_info &= ~(if (is_white) CastleInfo.K.index() else CastleInfo.k.index());
+                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.K else CastleInfo.k).index() > 0) {
+                        self.state.castle_info = @enumFromInt(self.state.castle_info.index() & ~(if (is_white) CastleInfo.K.index() else CastleInfo.k.index()));
                         // self.state.material_key ^= ~Zobrist.caslting[if (is_white) CastleInfo.K else CastleInfo.k) > 0];
                     }
                 } else if (move.getFrom().file() == File.fa) {
-                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.Q else CastleInfo.q) > 0) {
-                        self.state.castle_info &= ~(if (is_white) CastleInfo.Q.index() else CastleInfo.q.index());
+                    if (self.state.castle_info.index() & (if (is_white) CastleInfo.Q else CastleInfo.q).index() > 0) {
+                        self.state.castle_info = @enumFromInt(self.state.castle_info.index() & ~(if (is_white) CastleInfo.Q.index() else CastleInfo.q.index()));
                         // self.state.material_key ^= ~Zobrist.caslting[if (is_white) CastleInfo.Q else CastleInfo.q) > 0];
                     }
                 }
@@ -173,14 +185,14 @@ pub const Position = struct {
                         self.state.en_passant = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
                     },
                     MoveFlags.en_passant => {
-                        const en_passant_sq = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
-                        self.state.last_captured_piece = self.board[en_passant_sq];
+                        const en_passant_sq: Square = to.add(if (self.state.turn == Color.white) Direction.south else Direction.north);
+                        self.state.last_captured_piece = self.board[en_passant_sq.index()];
 
                         // Remove
                         self.remove(self.state.last_captured_piece, en_passant_sq);
-                        // self.state.material_key ^= Zobrist.psq[self.state.last_captured_piece.pieceToPieceType()][en_passant_sq];
+                        // self.state.material_key ^= Zobrist.psq[self.state.last_captured_piece.pieceToPieceType()][en_passant_sq.index()];
 
-                        self.board[en_passant_sq] = Piece.none;
+                        self.board[en_passant_sq.index()] = Piece.none;
                     },
                     else => {},
                 }
@@ -191,17 +203,21 @@ pub const Position = struct {
         }
 
         if (move.isCapture()) {
-            if (to_piece == PieceType.none) {
+            if (to_piece == Piece.none) {
                 return error.CaptureNone;
             } else {
                 // This should be the quickest to disable castle when rook is taken
-                const castleRemove: CastleInfo = switch (to) {
-                    0 => CastleInfo.K,
-                    types.board_size - 1 => CastleInfo.Q,
-                    types.board_size2 - types.board_size => CastleInfo.k,
-                    types.board_size2 - 1 => CastleInfo.q,
-                    else => CastleInfo.none,
-                };
+                var castleRemove: CastleInfo = CastleInfo.none;
+
+                if (to == self.rook_initial[0]) {
+                    castleRemove = CastleInfo.K;
+                } else if (to == self.rook_initial[1]) {
+                    castleRemove = CastleInfo.Q;
+                } else if (to == self.rook_initial[0].relativeSquare(Color.black)) {
+                    castleRemove = CastleInfo.k;
+                } else if (to == self.rook_initial[1].relativeSquare(Color.black)) {
+                    castleRemove = CastleInfo.q;
+                }
 
                 if (CastleInfo.none != CastleInfo.none and (self.state.castle_info.index() | castleRemove.index())) {
                     self.state.castle_info &= ~castleRemove;
@@ -211,7 +227,7 @@ pub const Position = struct {
                 self.state.last_captured_piece = to_piece;
 
                 // Remove captured
-                self.remove(to_piece, move.to);
+                self.remove(to_piece, move.getTo());
 
                 // Reset rule 50 counter
                 self.state.rule_fifty = 0;
@@ -229,17 +245,21 @@ pub const Position = struct {
         switch (move.getFlags()) {
             MoveFlags.oo => {
                 var tmp: State = State{};
-                state = self.state;
-                self.movePiece(Move{ .flags = 0, .from = from + 3, .to = from + 3 - 2 }, &tmp); // CHESS 960 BUG
+                // CHESS 960 BUG
+                if (self.movePiece(Move{ .flags = 0, .from = @truncate(from.index() + 3), .to = @truncate(from.index() + 3 - 2) }, &tmp)) {} else |err| {
+                    return err;
+                }
                 // We have moved, we need to set the turn back
-                self.state = &state;
+                self.state = state;
             },
             MoveFlags.ooo => {
                 var tmp: State = State{};
-                state = self.state;
-                self.movePiece(Move{ .flags = 0, .from = from - 4, .to = from - 4 + 3 }, &tmp); // CHESS 960 BUG
+                // CHESS 960 BUG
+                if (self.movePiece(Move{ .flags = 0, .from = @truncate(from.index() - 4), .to = @truncate(from.index() - 4 + 3) }, &tmp)) {} else |err| {
+                    return err;
+                }
                 // We have moved, we need to set the turn back
-                self.state = &state;
+                self.state = state;
             },
             else => {},
         }
@@ -259,7 +279,7 @@ pub const Position = struct {
     }
 
     /// silent will not change self.state
-    pub inline fn unMovePiece(self: *Position, move: Move, silent: bool) !void {
+    pub fn unMovePiece(self: *Position, move: Move, silent: bool) !void {
         const from: Square = move.getFrom();
         const to: Square = move.getTo();
         const to_piece: Piece = self.board[to.index()];
@@ -271,18 +291,18 @@ pub const Position = struct {
             // Was a promotion
             if (move.isPromotion()) {
                 // Before delete we store the data we need
-                const is_white: Color = to_piece.pieceToColor();
+                const is_white: bool = to_piece.pieceToColor() == Color.white;
                 // Remove promoted piece back into pawn (already moved back)
                 self.remove(to_piece, from);
                 self.add(if (is_white) Piece.w_pawn else Piece.b_pawn, from);
-                to_piece = self.board[from]; // update, may not be needed if we don't need later
+                // to_piece = self.board[from.index()]; // update, may not be needed if we don't need later
             }
 
             if (self.state.last_captured_piece != Piece.none) {
-                const local_to: Square = to;
+                var local_to: Square = to;
                 // Case where capture was en passant
                 if (move.isEnPassant())
-                    local_to = if (self.state.last_captured_piece.pieceToColor() == Color.white) to + 8 else to - 8;
+                    local_to = if (self.state.last_captured_piece.pieceToColor() == Color.white) to.add(Direction.north) else to.add(Direction.south);
 
                 self.add(self.state.last_captured_piece, local_to);
             }
@@ -292,16 +312,22 @@ pub const Position = struct {
 
         // If castling we move the rook as well
         if (move.getFlags() == MoveFlags.oo) {
-            unMovePiece(Move{ .from = from + 3, .to = from + 3 - 2 }, true);
+            if (self.unMovePiece(Move{ .from = @truncate(from.index() + 3), .to = @truncate(from.index() + 3 - 2) }, true)) {} else |err| {
+                return err;
+            }
         } else if (move.getFlags() == MoveFlags.ooo) {
-            unMovePiece(Move{ .from = from - 4, .to = from - 4 + 3 }, true);
+            if (self.unMovePiece(Move{ .from = @truncate(from.index() - 4), .to = @truncate(from.index() - 4 + 3) }, true)) {} else |err| {
+                return err;
+            }
         }
     }
 
     pub fn generateLegalMoves(self: *Position, color: types.Color, list: *std.ArrayList(types.Move)) void {
-        const us_bb = self.bb_colors[color.index()];
-        const them_bb = self.bb_colors[color.invert().index()];
-        const all_bb = us_bb | them_bb;
+        const us_bb: Bitboard = self.bb_colors[color.index()];
+        const them_bb: Bitboard = self.bb_colors[color.invert().index()];
+        const all_bb: Bitboard = us_bb | them_bb;
+
+        const our_king: Square = @enumFromInt(types.lsb(us_bb & self.bb_pieces[PieceType.king.index()]));
 
         var attacked: Bitboard = 0;
         for (std.enums.values(PieceType)) |pt| {
@@ -314,45 +340,126 @@ pub const Position = struct {
             }
         }
 
-        // We first have to compute if is in check or double check
-        // We then have to compute check blockers
+        // Compute checkers from non blockables piece types
+        // All knights can attack the king the same way a knight would attack form the king's square
+        self.checkers = tables.getAttacks(PieceType.knight, color.invert(), our_king, 0) & them_bb & self.bb_pieces[PieceType.knight.index()];
+        // Same method for pawn, transform the king into a pawn
+        self.checkers |= tables.pawn_attacks[color.index()][our_king.index()] & them_bb & self.bb_pieces[PieceType.pawn.index()];
 
-        for (std.enums.values(PieceType)) |pt| {
-            if (pt == PieceType.none)
-                continue;
+        // Compute candidate checkers from sliders and pinned pieces, transform the king into a slider
+        var candidates: types.Bitboard = tables.getAttacks(types.PieceType.bishop, Color.white, our_king, them_bb) & ((self.bb_pieces[PieceType.bishop.index()] | self.bb_pieces[PieceType.queen.index()]) & self.bb_colors[color.invert().index()]);
+        candidates |= tables.getAttacks(types.PieceType.rook, Color.white, our_king, them_bb) & ((self.bb_pieces[PieceType.rook.index()] | self.bb_pieces[PieceType.queen.index()]) & self.bb_colors[color.invert().index()]);
 
-            var from_bb: Bitboard = self.bb_pieces[pt.index()] & us_bb;
-            while (from_bb != 0) {
-                const from: Square = types.popLsb(&from_bb);
-                var to: Bitboard = tables.getAttacks(pt, color, from, all_bb) & ~us_bb;
+        self.pinned = 0;
+        while (candidates != 0) {
+            const sq: Square = types.popLsb(&candidates);
+            const bb_between: Bitboard = tables.squares_between[our_king.index()][sq.index()] & us_bb;
 
-                if (pt == types.PieceType.king) {
-                    to &= ~attacked;
-                }
+            if (bb_between == 0) {
+                // No our piece between king and slider: check
+                self.checkers ^= sq.sqToBB();
+            } else if ((bb_between & (bb_between - 1)) == 0) {
+                // Only one of our piece between king and slider: pinned
+                self.pinned ^= bb_between;
+            }
+        }
 
-                // Capture
-                Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
+        switch (types.popcount(self.checkers)) {
+            // Double check, move king
+            2 => {
+                const to: Bitboard = tables.getAttacks(PieceType.king, color, our_king, all_bb) & ~attacked;
+                Move.generateMove(MoveFlags.quiet, our_king, to & ~all_bb, list);
+                Move.generateMove(MoveFlags.capture, our_king, to & them_bb, list);
+            },
+            // SingleCheck
+            1 => {},
+            // No check
+            else => {
+                for (std.enums.values(PieceType)) |pt| {
+                    if (pt == PieceType.none)
+                        continue;
 
-                // Quiet and en passant
-                if (pt == PieceType.pawn) {
-                    // En passant
-                    // Pawn that can take are from the north.relativeDir() of en_passant square
-                    if (self.state.en_passant != Square.none) {
-                        const from_en_passant: Bitboard = tables.pawn_attacks[color.invert().index()][self.state.en_passant.index()];
-                        Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & self.bb_pieces[PieceType.pawn.index()], self.state.en_passant, list);
-                    }
-                    // Push
-                    if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
-                        list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
-                        // Double push
-                        if (from.rank() == Rank.r2.relative_rank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
-                            list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relativeDir(color)).index()) }) catch unreachable;
+                    var from_bb: Bitboard = self.bb_pieces[pt.index()] & us_bb;
+
+                    // Deal with pinned pawns first and remove them
+                    if (pt == PieceType.pawn) {
+                        var pinned_pawns: Bitboard = us_bb & self.bb_pieces[PieceType.pawn.index()] & self.pinned;
+                        from_bb &= ~pinned_pawns;
+                        while (pinned_pawns != 0) {
+                            const from: Square = types.popLsb(&pinned_pawns);
+                            // If a pawn is aligned with the king, he can only be aligned in a certain direction
+                            const pawn_forward: Square = from.add(Direction.north.relativeDir(color));
+                            const line: Bitboard = tables.squares_line[from.index()][our_king.index()];
+                            if (self.board[pawn_forward.index()] == Piece.none and (line & pawn_forward.sqToBB()) > 0) {
+                                list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
+                                // Double push
+                                if (from.rank() == Rank.r2.relativeRank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
+                                    list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relativeDir(color)).index()) }) catch unreachable;
+                                }
+                            } else if (line != 0) {
+                                const to: Bitboard = tables.getAttacks(pt, color, from, all_bb); // Careful: us_bb not excluded
+                                Move.generateMove(MoveFlags.capture, from, to & line & them_bb, list);
+                            }
                         }
                     }
-                } else {
-                    Move.generateMove(MoveFlags.quiet, from, to & ~all_bb, list);
+
+                    while (from_bb != 0) {
+                        const from: Square = types.popLsb(&from_bb);
+                        var to: Bitboard = tables.getAttacks(pt, color, from, all_bb); // Careful: us_bb not excluded
+
+                        // Could be optimized
+                        if ((from.sqToBB() & self.pinned) > 0) {
+                            to &= tables.squares_line[our_king.index()][from.index()];
+                        }
+
+                        if (pt == types.PieceType.king) {
+                            to &= ~attacked;
+                        }
+
+                        // Capture
+                        Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
+
+                        // Quiet and en passant
+                        if (pt == PieceType.pawn) {
+                            // En passant
+                            // Pawn that can take are from the north.relativeDir() of en_passant square
+                            if (self.state.en_passant != Square.none) {
+                                const from_en_passant: Bitboard = tables.pawn_attacks[color.invert().index()][self.state.en_passant.index()];
+                                Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & self.bb_pieces[PieceType.pawn.index()], self.state.en_passant, list);
+                            }
+                            // Push
+                            if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
+                                list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
+                                // Double push
+                                if (from.rank() == Rank.r2.relativeRank(color) and self.board[from.add(Direction.north_north.relativeDir(color)).index()] == Piece.none) {
+                                    list.append(Move{ .flags = MoveFlags.double_push.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north_north.relativeDir(color)).index()) }) catch unreachable;
+                                }
+                            }
+                        } else {
+                            Move.generateMove(MoveFlags.quiet, from, to & ~all_bb, list);
+                        }
+                    }
                 }
-            }
+                // Castling
+                // TODO ADD CASTLING TEST FOR 960
+                // Simplified code flow since we know our_king
+                // OO
+                if ((self.state.castle_info.index() & CastleInfo.K.relativeCastle(color).index()) > 0) {
+                    const to_king_oo: Square = Square.g1.relativeSquare(color);
+                    const path_oo: Bitboard = tables.squares_between[our_king.index()][to_king_oo.index()] | to_king_oo.sqToBB();
+                    if ((path_oo & (all_bb & ~self.rook_initial[1].sqToBB() & ~our_king.sqToBB()) == 0) and (path_oo & attacked) == 0) {
+                        list.append(Move{ .flags = MoveFlags.oo.index(), .from = @truncate(our_king.index()), .to = @truncate(to_king_oo.index()) }) catch unreachable;
+                    }
+                }
+                // OOO
+                if ((self.state.castle_info.index() & CastleInfo.Q.relativeCastle(color).index()) > 0) {
+                    const to_king_ooo: Square = Square.c1.relativeSquare(color);
+                    const path_ooo: Bitboard = tables.squares_between[our_king.index()][to_king_ooo.index()] | to_king_ooo.sqToBB();
+                    if ((path_ooo & (all_bb & ~self.rook_initial[0].sqToBB() & ~our_king.sqToBB()) == 0) and (path_ooo & attacked) == 0) {
+                        list.append(Move{ .flags = MoveFlags.oo.index(), .from = @truncate(our_king.index()), .to = @truncate(to_king_ooo.index()) }) catch unreachable;
+                    }
+                }
+            },
         }
     }
 
@@ -373,22 +480,19 @@ pub const Position = struct {
 
         std.debug.print("{s} to move\n", .{if (self.state.turn == Color.white) "White" else "Black"});
 
-        // Size of buffer could be 90 but std.fmt.allocPrint and ArenaAllocator requires more
-        var buffer: [300]u8 = undefined;
+        var buffer: [128]u8 = undefined;
         var alloc = std.heap.FixedBufferAllocator.init(&buffer);
-        var arena = std.heap.ArenaAllocator.init(alloc.allocator());
-        defer arena.deinit();
-        const allocator = arena.allocator();
+        const allocator = alloc.allocator();
 
-        if (self.getFen(allocator)) |fen| {
-            std.debug.print("fen: {s}\n", .{fen});
-        } else |err| {
-            std.debug.print("Error {s} reading fen\n", .{@errorName(err)});
-        }
+        const fen = self.getFen(allocator) catch unreachable;
+        defer fen.deinit();
+
+        std.debug.print("fen: {s}\n", .{fen.items});
+
         std.debug.print("zobrist: {}\n", .{self.zobrist});
     }
 
-    pub fn getFen(self: *const Position, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn getFen(self: *const Position, allocator: std.mem.Allocator) !std.ArrayList(u8) {
         var fen = std.ArrayList(u8).init(allocator);
         var i: i8 = Square.a8.index();
         while (i >= 0) : (i -= 8) {
@@ -416,14 +520,18 @@ pub const Position = struct {
         try fen.append(' ');
         try fen.append(if (self.state.turn == Color.white) 'w' else 'b');
         try fen.append(' ');
-        if ((self.state.castle_info.index() | CastleInfo.K.index()) > 0)
-            try fen.append('K');
-        if ((self.state.castle_info.index() | CastleInfo.Q.index()) > 0)
-            try fen.append('Q');
-        if ((self.state.castle_info.index() | CastleInfo.k.index()) > 0)
-            try fen.append('k');
-        if ((self.state.castle_info.index() | CastleInfo.q.index()) > 0)
-            try fen.append('q');
+        if (self.state.castle_info == CastleInfo.none) {
+            try fen.append('-');
+        } else {
+            if ((self.state.castle_info.index() & CastleInfo.K.index()) > 0)
+                try fen.append('K');
+            if ((self.state.castle_info.index() & CastleInfo.Q.index()) > 0)
+                try fen.append('Q');
+            if ((self.state.castle_info.index() & CastleInfo.k.index()) > 0)
+                try fen.append('k');
+            if ((self.state.castle_info.index() & CastleInfo.q.index()) > 0)
+                try fen.append('q');
+        }
 
         try fen.append(' ');
         if (self.state.en_passant == Square.none) {
@@ -434,25 +542,37 @@ pub const Position = struct {
 
         try fen.append(' ');
         var buffer: [4]u8 = undefined;
-        const buf = buffer[0..];
+        var buf = buffer[0..];
         try fen.appendSlice(std.fmt.bufPrintIntToSlice(buf, self.state.rule_fifty, 10, .lower, std.fmt.FormatOptions{}));
 
-        return fen.items;
+        try fen.append(' ');
+        buffer = undefined;
+        buf = buffer[0..];
+        try fen.appendSlice(std.fmt.bufPrintIntToSlice(buf, self.state.game_ply, 10, .lower, std.fmt.FormatOptions{}));
+
+        return fen;
     }
 
+    // Maybe sq should be a square and use sq.add()
     pub fn setFen(state: *State, fen: []const u8) Position {
         state.* = State{};
         var pos: Position = Position.new(state);
         var sq: i32 = Square.a8.index();
         var tokens = std.mem.tokenizeScalar(u8, fen, ' ');
         const bd = tokens.next().?;
+        var rook_cnt: u8 = 0;
         for (bd) |ch| {
             if (std.ascii.isDigit(ch)) {
                 sq += @as(i32, ch - '0') * Direction.east.index();
             } else if (ch == '/') {
                 sq += Direction.south.index() * 2;
             } else {
-                pos.add(Piece.first_index(ch).?, @enumFromInt(sq));
+                const p: Piece = Piece.first_index(ch).?;
+                pos.add(p, @enumFromInt(sq));
+                if (ch == 'R' and rook_cnt < 2) {
+                    pos.rook_initial[rook_cnt] = @enumFromInt(sq);
+                    rook_cnt += 1;
+                }
                 sq += 1;
             }
         }

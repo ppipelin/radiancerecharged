@@ -22,6 +22,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe.linkLibC();
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
@@ -59,16 +61,24 @@ pub fn build(b: *std.Build) void {
     });
 
     const exe_tests_movegen = b.addTest(.{
-        .root_source_file = b.path("src/testsMovegen.zig"),
+        .root_source_file = b.path("src/tests_movegen.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const exe_tests_960 = b.addTest(.{
+        .root_source_file = b.path("src/tests_960.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const run_exe_tests = b.addRunArtifact(exe_tests);
     const run_exe_tests_movegen = b.addRunArtifact(exe_tests_movegen);
+    const run_exe_tests_960 = b.addRunArtifact(exe_tests_960);
 
     run_exe_tests.has_side_effects = true;
     run_exe_tests_movegen.has_side_effects = true;
+    run_exe_tests_960.has_side_effects = true;
 
     // Similar to creating the run step earlier, this exposes a `test` step to
     // the `zig build --help` menu, providing a way for the user to request
@@ -76,4 +86,5 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_tests.step);
     test_step.dependOn(&run_exe_tests_movegen.step);
+    test_step.dependOn(&run_exe_tests_960.step);
 }

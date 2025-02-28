@@ -7,12 +7,14 @@ const types = @import("types.zig");
 
 const expect = std.testing.expect;
 
+const allocator = std.testing.allocator;
+
 test "Position" {
     var s: position.State = position.State{};
     var pos = position.Position.new(&s);
     try expect(pos.state.material_key == 0);
     try expect(pos.state.turn == types.Color.white);
-    try expect(pos.state.game_ply == 0);
+    try expect(pos.state.game_ply == 1);
     try expect(pos.board[0] == types.Piece.none);
 
     pos.add(types.Piece.w_knight, types.Square.f3);
@@ -29,18 +31,10 @@ test "Fen" {
     const fen = position.start_fen;
     var pos = position.Position.setFen(&s, fen);
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-    try expect(std.mem.eql(u8, fen[0 .. fen.len - 2], pos.getFen(allocator) catch unreachable));
+    const new_fen = pos.getFen(allocator) catch unreachable;
+    defer new_fen.deinit();
 
-    const move: types.Move = types.Move{ .flags = types.MoveFlags.double_push.index(), .from = 12, .to = 28 };
-    var s2: position.State = position.State{};
-    pos.movePiece(move, &s2) catch unreachable;
-    try expect(std.mem.eql(u8, "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0", pos.getFen(allocator) catch unreachable));
-
-    pos.unMovePiece(move, false) catch unreachable;
-    try expect(std.mem.eql(u8, fen[0 .. fen.len - 2], pos.getFen(allocator) catch unreachable));
+    try expect(std.mem.eql(u8, fen[0..fen.len], new_fen.items));
 }
 
 test "Move" {
@@ -48,26 +42,22 @@ test "Move" {
     try expect(@bitSizeOf(types.Move) == 16);
 }
 
-test "PerftKiwipete" {
+test "MoveUnmovePiece" {
     var s: position.State = position.State{};
-    var pos = position.Position.setFen(&s, position.kiwipete);
-    var alloc = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = alloc.allocator();
-    tables.initAll(allocator);
-    defer tables.deinitAll();
+    var pos = position.Position.setFen(&s, position.start_fen);
 
-    var list = std.ArrayList(types.Move).init(allocator);
-    defer list.deinit();
+    var s2: position.State = position.State{};
+    try pos.movePiece(types.Move{ .from = @truncate(types.Square.a2.index()), .to = @truncate(types.Square.a3.index()) }, &s2);
 
-    pos.generateLegalMoves(pos.state.turn, &list);
+    var s3: position.State = position.State{};
+    try pos.movePiece(types.Move{ .from = @truncate(types.Square.e7.index()), .to = @truncate(types.Square.e6.index()) }, &s3);
 
-    pos.debugPrint();
-    std.debug.print("{}\n", .{list.items.len});
+    try pos.unMovePiece(types.Move{ .from = @truncate(types.Square.e7.index()), .to = @truncate(types.Square.e6.index()) }, false);
 
-    for (list.items) |item| {
-        item.uciPrint(std.io.getStdErr().writer());
-        std.debug.print("\n", .{});
-    }
+    try pos.unMovePiece(types.Move{ .from = @truncate(types.Square.a2.index()), .to = @truncate(types.Square.a3.index()) }, false);
 
-    try expect(list.items.len == 48);
+    const new_fen = pos.getFen(allocator) catch unreachable;
+    defer new_fen.deinit();
+
+    try expect(std.mem.eql(u8, position.start_fen, new_fen.items));
 }
