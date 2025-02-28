@@ -21,16 +21,24 @@ pub fn main() !void {
     tables.initAll(allocator);
     defer tables.deinitAll();
 
+    // pos.state.turn = pos.state.turn.invert();
+    // std.debug.print("Perft 1: {}\n\n", .{try search.perft(std.heap.page_allocator, &pos, 1, false)});
+
+    var t = try std.time.Timer.start();
+
+    // std.debug.print("Perft 1: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 1, true)});
+    // std.debug.print("Perft 2: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 2, true)});
+    // std.debug.print("Perft 3: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 3, true)});
+    // std.debug.print("Perft 4: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 4, true)});
+    // std.debug.print("Perft 5: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 5, false)});
+    // std.debug.print("Perft 6: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 6, false)});
+
     var list = std.ArrayList(types.Move).init(std.heap.page_allocator);
     defer list.deinit();
-
     pos.generateLegalMoves(pos.state.turn, &list);
+    types.Move.displayMoves(list);
 
-    std.debug.print("nb of moves: {d}\n", .{list.items.len});
-    for (list.items) |item| {
-        item.uciPrint(stdout);
-        try stdout.print("\n", .{});
-    }
+    std.debug.print("Time: {}\n", .{std.fmt.fmtDuration(t.read())});
 
     try stdout.print("Run `zig build test` to run the tests.\n", .{});
 }
