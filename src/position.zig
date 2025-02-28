@@ -405,14 +405,7 @@ pub const Position = struct {
 
                     while (from_bb != 0) {
                         const from: Square = types.popLsb(&from_bb);
-
-                        var can_en_passant: Bitboard = 0;
-
-                        if (pt == PieceType.pawn and self.state.en_passant != Square.none) {
-                            can_en_passant = self.state.en_passant.sqToBB();
-                        }
-
-                        var to: Bitboard = tables.getAttacks(pt, color, from, all_bb | can_en_passant); // Careful: us_bb not excluded
+                        var to: Bitboard = tables.getAttacks(pt, color, from, all_bb); // Careful: us_bb not excluded
 
                         // Could be optimized
                         if ((from.sqToBB() & self.pinned) > 0) {
@@ -424,10 +417,16 @@ pub const Position = struct {
                         }
 
                         // Capture
-                        Move.generateMove(MoveFlags.capture, from, to & them_bb | (to & can_en_passant), list);
+                        Move.generateMove(MoveFlags.capture, from, to & them_bb, list);
 
-                        // Quiet
+                        // Quiet and en passant
                         if (pt == PieceType.pawn) {
+                            // En passant
+                            // Pawn that can take are from the north.relativeDir() of en_passant square
+                            if (self.state.en_passant != Square.none) {
+                                const from_en_passant: Bitboard = tables.pawn_attacks[color.invert().index()][self.state.en_passant.index()];
+                                Move.generateMoveFrom(MoveFlags.en_passant, from_en_passant & us_bb & self.bb_pieces[PieceType.pawn.index()], self.state.en_passant, list);
+                            }
                             // Push
                             if (self.board[from.add(Direction.north.relativeDir(color)).index()] == Piece.none) {
                                 list.append(Move{ .flags = MoveFlags.quiet.index(), .from = @truncate(from.index()), .to = @truncate(from.add(Direction.north.relativeDir(color)).index()) }) catch unreachable;
