@@ -2,6 +2,10 @@
 
 const std = @import("std");
 
+pub const major = 4;
+pub const minor = 0;
+pub const patch = 0;
+
 ////// Chess //////
 
 pub const board_size: comptime_int = 8;

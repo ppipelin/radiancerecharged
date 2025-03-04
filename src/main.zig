@@ -10,23 +10,15 @@ pub fn main() !void {
 
     const stdout = std.io.getStdOut().writer();
 
-    var state: position.State = position.State{};
-    var pos = position.Position.setFen(&state, position.kiwipete);
-    pos.debugPrint();
+    try stdout.print("Radiance {s} by Paul-Elie Pipelin (ppipelin)\n", .{computeVersion(types.major, types.minor, types.patch)});
+}
 
-    var t = try std.time.Timer.start();
-
-    // var list = std.ArrayList(types.Move).init(std.heap.page_allocator);
-    // defer list.deinit();
-    // pos.generateLegalMoves(pos.state.turn, &list);
-    // types.Move.displayMoves(stdout, list);
-
-    // std.debug.print("Perft 1: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 1, true)});
-    // std.debug.print("Perft 2: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 2, true)});
-    // std.debug.print("Perft 3: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 3, true)});
-    std.debug.print("Perft 4: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 4, true)});
-    // std.debug.print("Perft 5: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 5, true)});
-    // std.debug.print("Perft 6: {}\n\n", .{try search.perft(std.heap.c_allocator, &pos, 6, true)});
-
-    try stdout.print("Time: {}\n", .{std.fmt.fmtDuration(t.read())});
+fn computeVersion(comptime major: u8, comptime minor: u8, comptime patch: u8) []const u8 {
+    if (minor == 0 and patch == 0) {
+        return std.fmt.comptimePrint("{d}", .{major});
+    } else if (patch == 0) {
+        return std.fmt.comptimePrint("{d}.{d}", .{ major, minor });
+    } else {
+        return std.fmt.comptimePrint("{d}.{d}.{d}", .{ major, minor, patch });
+    }
 }
