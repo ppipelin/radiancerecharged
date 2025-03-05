@@ -6,6 +6,16 @@ pub const major = 4;
 pub const minor = 0;
 pub const patch = 0;
 
+pub fn computeVersion() []const u8 {
+    if (minor == 0 and patch == 0) {
+        return std.fmt.comptimePrint("{d}", .{major});
+    } else if (patch == 0) {
+        return std.fmt.comptimePrint("{d}.{d}", .{ major, minor });
+    } else {
+        return std.fmt.comptimePrint("{d}.{d}.{d}", .{ major, minor, patch });
+    }
+}
+
 ////// Chess //////
 
 pub const board_size: comptime_int = 8;

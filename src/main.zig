@@ -1,3 +1,4 @@
+const interface = @import("interface.zig");
 const position = @import("position.zig");
 const search = @import("search.zig");
 const std = @import("std");
@@ -9,16 +10,10 @@ pub fn main() !void {
     defer tables.deinitAll(std.heap.c_allocator);
 
     const stdout = std.io.getStdOut().writer();
+    try stdout.print("Radiance {s} by Paul-Elie Pipelin (ppipelin)\n", .{types.computeVersion()});
 
-    try stdout.print("Radiance {s} by Paul-Elie Pipelin (ppipelin)\n", .{computeVersion(types.major, types.minor, types.patch)});
-}
-
-fn computeVersion(comptime major: u8, comptime minor: u8, comptime patch: u8) []const u8 {
-    if (minor == 0 and patch == 0) {
-        return std.fmt.comptimePrint("{d}", .{major});
-    } else if (patch == 0) {
-        return std.fmt.comptimePrint("{d}.{d}", .{ major, minor });
-    } else {
-        return std.fmt.comptimePrint("{d}.{d}.{d}", .{ major, minor, patch });
+    var stdin = std.io.getStdIn().reader();
+    if (interface.loop(&stdin, &stdout)) {} else |err| {
+        return err;
     }
 }

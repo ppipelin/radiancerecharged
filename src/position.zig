@@ -1,3 +1,4 @@
+const position = @import("position.zig");
 const std = @import("std");
 const tables = @import("tables.zig");
 const types = @import("types.zig");
