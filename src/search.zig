@@ -1,7 +1,14 @@
+const evaluate = @import("evaluate.zig");
 const interface = @import("interface.zig");
 const position = @import("position.zig");
 const std = @import("std");
 const types = @import("types.zig");
+
+const NodeType = enum {
+    non_pv,
+    pv,
+    root,
+};
 
 const RootMove = struct {
     score: types.Value = -types.value_infinite,
@@ -109,7 +116,7 @@ pub fn iterativeDeepening(allocator: std.mem.Allocator, stdout: anytype, pos: *p
 
     pos.generateLegalMoves(allocator, pos.state.turn, &move_list);
 
-    const len = move_list.items.len;
+    const len: usize = move_list.items.len;
     if (len == 0) {
         return error.Checkmated;
     } else if (len == 1) {
@@ -139,20 +146,23 @@ pub fn iterativeDeepening(allocator: std.mem.Allocator, stdout: anytype, pos: *p
 
         // Reset aspiration window starting size
         const prev: types.Value = root_moves.items[0].average_score;
-        var delta: types.Value = @divTrunc(prev, 2) + 10;
-        var alpha: types.Value = @max(prev - delta, -types.value_infinite);
-        var beta: types.Value = @min(prev + delta, types.value_infinite);
-        var failed_high_cnt: types.Value = 0;
+        var delta: types.Value = @intCast(@abs(@divTrunc(prev, 2)) + 10);
+        var alpha: types.Value = @max(prev -| delta, -types.value_infinite);
+        var beta: types.Value = @min(prev +| delta, types.value_infinite);
+        var failed_high_cnt: u32 = 0;
 
         // Aspiration window
         // Disable by alpha = -types.value_infinite; beta = types.value_infinite;
         // alpha = -types.value_infinite; beta = types.value_infinite;
         while (true) {
             // Value score = abSearch<Root>(ss, b, e, alpha, beta, currentDepth);
-            const score: types.Value = 35;
+            const score: types.Value = abSearch(NodeType.root, pos, evaluate.evaluateShannon, alpha, beta, current_depth);
             if (current_depth > 1 and outOfTime(limits))
                 break;
 
+            std.debug.print("alpha {}\n", .{alpha});
+            std.debug.print("beta {}\n", .{beta});
+            std.debug.print("failed_high_cnt {}\n", .{failed_high_cnt});
             // In case of failing low/high increase aspiration window and
             // re-search, otherwise exit the loop.
             if (score <= alpha) {
@@ -168,7 +178,7 @@ pub fn iterativeDeepening(allocator: std.mem.Allocator, stdout: anytype, pos: *p
 
             std.sort.block(RootMove, root_moves.items, {}, RootMove.sort);
 
-            delta += @divTrunc(delta, 3);
+            delta +|= @divTrunc(delta, 3);
         }
 
         // Even if outofTime we keep a better move if there is one
@@ -184,9 +194,20 @@ pub fn iterativeDeepening(allocator: std.mem.Allocator, stdout: anytype, pos: *p
 
     // Even if outofTime we keep a better move if there is one
 
+    const move = root_moves.items[0].pv.items[0];
+
     for (root_moves.items) |*root_move| {
-        defer root_move.pv.deinit(allocator);
+        root_move.pv.deinit(allocator);
     }
 
-    return root_moves.items[0].pv.items[0];
+    return move;
+}
+
+fn abSearch(comptime nodetype: NodeType, pos: *position.Position, eval: *const fn (pos: position.Position) types.Value, alpha: types.Value, beta: types.Value, current_depth: u8) types.Value {
+    _ = nodetype;
+    _ = alpha;
+    _ = beta;
+    _ = current_depth;
+
+    return eval(pos.*);
 }
