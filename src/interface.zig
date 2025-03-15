@@ -4,6 +4,7 @@ const std = @import("std");
 const types = @import("types.zig");
 
 pub var g_stop = false;
+pub var limits: Limits = Limits{};
 pub var remaining: types.TimePoint = 0;
 pub var increment: types.TimePoint = 0;
 
@@ -282,7 +283,7 @@ fn cmd_position(pos: *position.Position, tokens: anytype, states: *StateList) !v
 
 fn cmd_go(allocator: std.mem.Allocator, stdout: anytype, pos: *position.Position, tokens: anytype, states: *StateList, options: *std.StringArrayHashMapUnmanaged(Option)) !void {
     _ = states;
-    var limits: Limits = Limits{};
+    limits = Limits{};
     var token: ?[]const u8 = tokens.next();
     g_stop = false;
 
@@ -372,8 +373,9 @@ fn cmd_go(allocator: std.mem.Allocator, stdout: anytype, pos: *position.Position
             try (try search.searchRandom(allocator, pos)).printUCI(stdout);
             try stdout.print("\n", .{});
         } else if (std.mem.eql(u8, search_mode, "abNegamax")) {
+            const move: types.Move = try search.iterativeDeepening(allocator, stdout, pos, limits);
             try stdout.print("bestmove ", .{});
-            try (try search.iterativeDeepening(allocator, stdout, pos, limits)).printUCI(stdout);
+            try move.printUCI(stdout);
             try stdout.print("\n", .{});
         } else {
             try stdout.print("Search mode {s} not implemented\n", .{search_mode});
