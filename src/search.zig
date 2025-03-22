@@ -319,10 +319,6 @@ fn quiesce(allocator: std.mem.Allocator, comptime nodetype: NodeType, ss: [*]Sta
             break;
     }
 
-    // // Quiet position
-    // if (move_list_capture.empty()) {
-    //     return alpha;
-    // }
     return alpha;
 }
 
