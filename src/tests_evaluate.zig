@@ -2,6 +2,7 @@ const evaluate = @import("evaluate.zig");
 const position = @import("position.zig");
 const std = @import("std");
 const tables = @import("tables.zig");
+const types = @import("types.zig");
 
 test "EvaluateFlip" {
     tables.initAll(std.testing.allocator);
@@ -56,4 +57,21 @@ test "EvaluateTable" {
     const pos: position.Position = try position.Position.setFen(&s, fen);
 
     try std.testing.expectEqual(evaluate.evaluateTable(pos), evaluate.evaluateTable(pos));
+}
+
+test "EvaluatePawnHeuristics" {
+    tables.initAll(std.testing.allocator);
+    defer tables.deinitAll(std.testing.allocator);
+
+    const fen: []const u8 = "3k4/7p/3p2P1/3P2P1/P6P/P7/P1P3P1/3K4 w - -";
+
+    var s: position.State = position.State{};
+    const pos: position.Position = try position.Position.setFen(&s, fen);
+
+    const bb_white: types.Bitboard = pos.bb_pieces[types.PieceType.pawn.index()] & pos.bb_colors[types.Color.white.index()];
+    const bb_black: types.Bitboard = pos.bb_pieces[types.PieceType.pawn.index()] & pos.bb_colors[types.Color.black.index()];
+
+    try std.testing.expectEqual(6, evaluate.computeDoubledPawns(bb_white));
+    try std.testing.expectEqual(1, evaluate.computeBlockedPawns(bb_white, types.Color.white, bb_black));
+    try std.testing.expectEqual(3, evaluate.computeIsolatedPawns(bb_white));
 }
